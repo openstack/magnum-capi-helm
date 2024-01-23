@@ -71,6 +71,11 @@ class Driver(driver.Driver):
             },
         ]
 
+    def validate_master_resize(self, node_count):
+        # This driver supports resizing to the same values
+        # as initial create, so re-use the Base class validation.
+        return self.validate_master_size(node_count)
+
     def _update_control_plane_nodegroup_status(self, cluster, nodegroup):
         # The status of the master nodegroup is determined by the Cluster API
         # control plane object

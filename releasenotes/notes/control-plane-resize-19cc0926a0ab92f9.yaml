@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Adds support for resizing control plane nodes. This feature will be
+    possible only when using Magnum 2025.1 or above, and will otherwise
+    provide no changes.
+    Usage with command line client: openstack coe cluster resize
+    --nodegroup default-master <cluster> <new size>
