@@ -1,0 +1,48 @@
+---
+- project-template:
+    name: openstack-python3-jobs-magnum
+    description: |
+      The standard :zuul:project_template:`openstack-python3-jobs`
+      but with magnum added as a required-projects. This checks out
+      the project code and allows tox_install_siblings to use magnum
+      when building the venv.
+    check:
+      jobs:
+        - openstack-tox-pep8:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py38:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py39:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py310:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py311:
+            required-projects:
+              - openstack/magnum
+    gate:
+      jobs:
+        - openstack-tox-pep8:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py38:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py39:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py310:
+            required-projects:
+              - openstack/magnum
+        - openstack-tox-py311:
+            required-projects:
+              - openstack/magnum
+
+
+- project:
+    queue: magnum
+    templates:
+      - openstack-python3-jobs-magnum
