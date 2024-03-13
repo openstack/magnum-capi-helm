@@ -6,6 +6,10 @@
       but with magnum added as a required-projects. This checks out
       the project code and allows tox_install_siblings to use magnum
       when building the venv.
+      py38 is in Zed/2023.1/2023.2/2024.1 PTI
+      py39 is in Zed/2023.2/2024.1 PTI
+      py310 is in 2023.1/2023.2/2024.1 PTI
+      py311 is in 2024.1 PTI
     check:
       jobs:
         - openstack-tox-pep8:
@@ -40,7 +44,9 @@
         - openstack-tox-py311:
             required-projects:
               - openstack/magnum
-
+    post:
+      jobs:
+        - publish-openstack-python-branch-tarball
 
 - project:
     queue: magnum
