@@ -1,5 +1,17 @@
 ---
 - project-template:
+    name: openstack-cover-jobs-magnum
+    description: |
+      The standard openstack-cover-jobs but with magnum added as a
+      required-projects. This checks out the project code and allows
+      tox_install_siblings to use it when building the venv.
+    check:
+      jobs:
+        - openstack-tox-cover:
+            required-projects:
+              - openstack/magnum
+
+- project-template:
     name: openstack-python3-jobs-magnum
     description: |
       The standard :zuul:project_template:`openstack-python3-jobs`
@@ -51,4 +63,5 @@
 - project:
     queue: magnum
     templates:
+      - openstack-cover-jobs-magnum
       - openstack-python3-jobs-magnum
