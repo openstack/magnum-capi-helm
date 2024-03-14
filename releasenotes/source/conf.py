@@ -59,7 +59,7 @@ copyright = "2022, OpenStack Developers"
 openstackdocs_repo_name = "stackhpc/magnum-capi-helm"
 openstackdocs_bug_project = "magnum_capi_helm"
 openstackdocs_bug_tag = ""
-openstackdocs_auto_name = "False"
+openstackdocs_auto_name = False
 
 # The version info for the project you're documenting, acts as replacement for
 # |version| and |release|, also used in various other places throughout the
