@@ -62,7 +62,7 @@ def _create_app_cred(context, cluster):
             "openstack": {
                 "identity_api_version": 3,
                 "region_name": osc.cinder_region_name(),
-                "interface": CONF.nova_client.endpoint_type.replace("URL", ""),
+                "interface": CONF.capi_helm.app_cred_interface_type,
                 # This config item indicates whether TLS should be
                 # verified when connecting to the OpenStack API
                 "verify": CONF.drivers.verify_ca,

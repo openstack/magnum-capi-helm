@@ -117,6 +117,14 @@ capi_helm_opts = [
             "volume binding and dynamic provisioning should occur."
         ),
     ),
+    cfg.StrOpt(
+        "app_cred_interface_type",
+        default="public",
+        help=(
+            "The value to use in the interface field of "
+            "generated application credentials."
+        ),
+    ),
 ]
 
 CONF = cfg.CONF
