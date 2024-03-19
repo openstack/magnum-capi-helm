@@ -49,15 +49,6 @@ lives:::
   [capi_helm]
   kubeconfig_file = /etc/magnum/kubeconfig
 
-Note that the driver makes use of the nova_client config that will
-already be setup in your Magnum configuration to generate application
-credentials that reference the correct endpoint. You need to make
-sure this uses an endpoint that can be reached from inside the
-magnum clusters you create, by having something like this:::
-
-  [nova_client]
-  endpoint_type = publicURL
-
 To create a cluster, first you will need an image that
 has been built to include kubernetes.
 There are community maintained packer build pipelines here:
