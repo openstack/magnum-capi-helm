@@ -255,6 +255,16 @@ helm upgrade cluster-api-addon-provider cluster-api-addon-provider \
   --wait \
   --timeout 10m
 
+# Install janitor
+helm upgrade cluster-api-janitor-openstack cluster-api-janitor-openstack \
+  --install \
+  --repo https://stackhpc.github.io/cluster-api-janitor-openstack \
+  --version $CLUSTER_API_JANITOR_OPENSTACK \
+  --namespace capi-janitor-system \
+  --create-namespace \
+  --wait \
+  --timeout 10m
+
 pip install python-magnumclient
 
 # Configure OpenStack auth
