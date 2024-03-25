@@ -2389,3 +2389,109 @@ class ClusterAPIDriverTest(base.DbTestCase):
         self.assertEqual(
             helm_install_values["apiServer"]["allowedCidrs"], cidr_list
         )
+
+    @mock.patch.object(driver.Driver, "_get_k8s_keystone_auth_enabled")
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_keystone_webhook_enabled(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_get_keystone_auth_enabled,
+    ):
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+        mock_get_keystone_auth_enabled.return_value = True  # Enable webhook
+        self.cluster_obj.labels = {}
+
+        self.driver.create_cluster(
+            self.context, self.cluster_obj, "timeout-not-used"
+        )
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values["authWebhook"], "k8s-keystone-auth"
+        )
+        self.assertTrue(
+            helm_install_values["addons"]
+            .get(
+                "openstack", {}
+            )  # Default to {} so that next .get isn't called on None type
+            .get("k8sKeystoneAuth", {})
+            .get("enabled")
+        )
+
+    @mock.patch.object(driver.Driver, "_get_k8s_keystone_auth_enabled")
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_keystone_webhook_disabled(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_get_keystone_auth_enabled,
+    ):
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+        mock_get_keystone_auth_enabled.return_value = False  # Disable webhook
+        self.cluster_obj.labels = {}
+
+        self.driver.create_cluster(
+            self.context, self.cluster_obj, "timeout-not-used"
+        )
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertNotEqual(
+            helm_install_values.get("authWebhook"), "k8s-keystone-auth"
+        )
+        self.assertFalse(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("k8sKeystoneAuth", {})
+            .get("enabled")
+        )
