@@ -118,6 +118,11 @@ capi_helm_opts = [
         ),
     ),
     cfg.StrOpt(
+        "csi_cinder_availability_zone",
+        default="nova",
+        help=("The default availability zone to use for Cinder volumes."),
+    ),
+    cfg.StrOpt(
         "app_cred_interface_type",
         default="public",
         help=(

@@ -1957,11 +1957,10 @@ class ClusterAPIDriverTest(base.DbTestCase):
         )
         mock_labels.assert_called_with(self.cluster_obj)
 
-    @mock.patch("magnum.common.clients.OpenStackClients.cinder_region_name")
     @mock.patch("magnum.common.clients.OpenStackClients.cinder")
-    def test_get_storage_classes(self, mock_cinder, mock_osc_rn):
+    def test_get_storage_classes(self, mock_cinder):
         CONF.capi_helm.csi_cinder_default_volume_type = "type3"
-        mock_osc_rn.return_value = "middle_earth_east"
+        CONF.capi_helm.csi_cinder_availability_zone = "middle_earth_east"
         mock_vol_type_1 = mock.MagicMock()
         mock_vol_type_1.name = "type1"
         mock_vol_type_2 = mock.MagicMock()
@@ -1989,17 +1988,14 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "type3", storage_classes["defaultStorageClass"]["volumeType"]
         )
         self.assertEqual(
-            "middle_earth_east",
+            "middleeartheast",
             storage_classes["additionalStorageClasses"][0]["availabilityZone"],
         )
 
-    @mock.patch("magnum.common.clients.OpenStackClients.cinder_region_name")
     @mock.patch("magnum.common.clients.OpenStackClients.cinder")
-    def test_get_storage_class_volume_type_not_available(
-        self, mock_cinder, mock_osc_rn
-    ):
+    def test_get_storage_class_volume_type_not_available(self, mock_cinder):
         CONF.capi_helm.csi_cinder_default_volume_type = "type4"
-        mock_osc_rn.return_value = "middle_earth_east"
+        CONF.capi_helm.csi_cinder_availability_zone = "middle_earth_east"
         mock_vol_type_1 = mock.MagicMock()
         mock_vol_type_1.name = "type1"
         mock_vol_type_2 = mock.MagicMock()
@@ -2023,13 +2019,10 @@ class ClusterAPIDriverTest(base.DbTestCase):
             self.cluster_obj,
         )
 
-    @mock.patch("magnum.common.clients.OpenStackClients.cinder_region_name")
     @mock.patch("magnum.common.clients.OpenStackClients.cinder")
-    def test_get_storage_class_volume_type_not_defined(
-        self, mock_cinder, mock_osc_rn
-    ):
+    def test_get_storage_class_volume_type_not_defined(self, mock_cinder):
         CONF.capi_helm.csi_cinder_default_volume_type = None
-        mock_osc_rn.return_value = "middle_earth_east"
+        CONF.capi_helm.csi_cinder_availability_zone = "middle_earth_east"
         mock_vol_type_1 = mock.MagicMock()
         mock_vol_type_1.name = "__TYPE1__"
         mock_vol_type_2 = mock.MagicMock()

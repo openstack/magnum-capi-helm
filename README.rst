@@ -125,6 +125,7 @@ The driver respects the following cluster and template properties:
 
 The driver supports the following labels:
 
+* csi_cinder_availability_zone: default is nova, operators can configure the default in magnum.conf
 * monitoring_enabled: default is off, change to "true" to enable
 * kube_dashboard_enabled: defalt is on, change to "false" to disable
 * octavia_provider: default is "amphora", ovn is also an option
