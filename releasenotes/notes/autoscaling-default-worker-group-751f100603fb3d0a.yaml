@@ -1,0 +1,8 @@
+---
+features:
+  - |
+    Adds support for autoscaling of the default worker node group by respecting the
+    `min_node_count` and `max_node_count` cluster labels. Unlike the Heat driver,
+    when these labels are provided, the cluster will always start with node count
+    equal to the minimum node count value and the alternative `node_count` flag will
+    be ignored.
