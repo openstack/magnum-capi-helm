@@ -584,7 +584,7 @@ class Driver(driver.Driver):
         return self._get_label_bool(cluster, "auto_healing_enabled", True)
 
     def _get_k8s_keystone_auth_enabled(self, cluster):
-        return self._get_label_bool(cluster, "keystone_auth_enabled", True)
+        return self._get_label_bool(cluster, "keystone_auth_enabled", False)
 
     def _get_fixed_network_id(self, context, cluster):
         network = cluster.fixed_network
