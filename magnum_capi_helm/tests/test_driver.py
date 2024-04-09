@@ -1107,6 +1107,10 @@ class ClusterAPIDriverTest(base.DbTestCase):
         self.assertTrue(self.cluster_obj.name[:30] in second)
 
     def test_get_monitoring_enabled_from_template(self):
+
+        # Check default if label is not present
+        self.assertFalse(self.driver._get_monitoring_enabled(self.cluster_obj))
+
         for val in ["true", "True", "TRUE"]:
 
             self.cluster_obj.cluster_template.labels["monitoring_enabled"] = (
@@ -1118,6 +1122,9 @@ class ClusterAPIDriverTest(base.DbTestCase):
             self.assertTrue(result)
 
     def test_get_kube_dash_enabled_from_template(self):
+        # Check default if label is not present
+        self.assertTrue(self.driver._get_kube_dash_enabled(self.cluster_obj))
+
         for val in ["false", "False", "FALSE"]:
 
             self.cluster_obj.cluster_template.labels[

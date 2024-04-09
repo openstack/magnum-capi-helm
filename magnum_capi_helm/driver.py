@@ -20,6 +20,7 @@ from magnum.common import short_id
 from magnum.drivers.common import driver
 from magnum.objects import fields
 from oslo_log import log as logging
+from oslo_utils import strutils
 from oslo_utils import uuidutils
 
 from magnum_capi_helm.common import app_creds
@@ -468,13 +469,7 @@ class Driver(driver.Driver):
 
     def _get_label_bool(self, cluster, label, default):
         cluster_label = self._label(cluster, label, "")
-        if not cluster_label:
-            return default
-        if default:
-            # Default is on, so return for any value except "false"
-            return cluster_label.lower() != "false"
-        # Default is False, so only "true" responds with True
-        return cluster_label.lower() == "true"
+        return strutils.bool_from_string(cluster_label, default=default)
 
     def _get_label_int(self, cluster, label, default):
         cluster_label = self._label(cluster, label, "")
@@ -567,7 +562,7 @@ class Driver(driver.Driver):
     def _get_dns_nameservers(self, cluster):
         dns_nameserver = cluster.cluster_template.dns_nameserver
         if dns_nameserver:
-            return dns_nameserver.split(",")
+            return strutils.split_by_commas(dns_nameserver)
         else:
             return None
 
