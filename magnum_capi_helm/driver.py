@@ -472,9 +472,9 @@ class Driver(driver.Driver):
             return default
         if default:
             # Default is on, so return for any value except "false"
-            return cluster_label != "false"
+            return cluster_label.lower() != "false"
         # Default is False, so only "true" responds with True
-        return cluster_label == "true"
+        return cluster_label.lower() == "true"
 
     def _get_label_int(self, cluster, label, default):
         cluster_label = self._label(cluster, label, "")

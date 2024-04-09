@@ -1107,20 +1107,26 @@ class ClusterAPIDriverTest(base.DbTestCase):
         self.assertTrue(self.cluster_obj.name[:30] in second)
 
     def test_get_monitoring_enabled_from_template(self):
-        self.cluster_obj.cluster_template.labels["monitoring_enabled"] = "true"
+        for val in ["true", "True", "TRUE"]:
 
-        result = self.driver._get_monitoring_enabled(self.cluster_obj)
+            self.cluster_obj.cluster_template.labels["monitoring_enabled"] = (
+                val
+            )
 
-        self.assertTrue(result)
+            result = self.driver._get_monitoring_enabled(self.cluster_obj)
+
+            self.assertTrue(result)
 
     def test_get_kube_dash_enabled_from_template(self):
-        self.cluster_obj.cluster_template.labels["kube_dashboard_enabled"] = (
-            "false"
-        )
+        for val in ["false", "False", "FALSE"]:
 
-        result = self.driver._get_kube_dash_enabled(self.cluster_obj)
+            self.cluster_obj.cluster_template.labels[
+                "kube_dashboard_enabled"
+            ] = val
 
-        self.assertFalse(result)
+            result = self.driver._get_kube_dash_enabled(self.cluster_obj)
+
+            self.assertFalse(result)
 
     def test_get_chart_version_from_config(self):
         version = self.driver._get_chart_version(self.cluster_obj)
