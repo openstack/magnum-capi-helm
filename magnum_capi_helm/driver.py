@@ -831,13 +831,15 @@ class Driver(driver.Driver):
         if self._get_k8s_keystone_auth_enabled(cluster):
             k8s_keystone_auth_config = {
                 "authWebhook": "k8s-keystone-auth",
-                "openstack": {
-                    "k8sKeystoneAuth": {  # addon subchart configuration
-                        "enabled": True,
-                        "values": {
-                            "openstackAuthUrl": context.auth_url,
-                            "projectId": context.project_id,
-                        },
+                "addons": {
+                    "openstack": {
+                        "k8sKeystoneAuth": {  # addon subchart configuration
+                            "enabled": True,
+                            "values": {
+                                "openstackAuthUrl": context.auth_url,
+                                "projectId": context.project_id,
+                            },
+                        }
                     }
                 },
             }
