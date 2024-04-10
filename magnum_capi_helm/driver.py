@@ -652,7 +652,7 @@ class Driver(driver.Driver):
         cidr_list = cluster.labels.get("api_master_lb_allowed_cidrs", "")
         LOG.debug(f"CIDR list {cidr_list}")
         if isinstance(cidr_list, str) and cidr_list != "":
-            return cidr_list.split(";")
+            return cidr_list.split(",")
         return False
 
     def _storageclass_definitions(self, context, cluster):

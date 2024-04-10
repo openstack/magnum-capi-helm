@@ -2379,7 +2379,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
         mock_storageclasses,
         mock_get_keystone_auth_enabled,
     ):
-        cidrs = "192.168.0.0/16;10.0.0.0/8;123.123.123.123/32"
+        cidrs = "192.168.0.0/16,10.0.0.0/8,123.123.123.123/32"
         self.cluster_obj.labels = dict(api_master_lb_allowed_cidrs=cidrs)
         mock_image.return_value = (
             "imageid1",
@@ -2390,7 +2390,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
         mock_load.return_value = mock_client
 
         self.driver.create_cluster(self.context, self.cluster_obj, 10)
-        cidr_list = cidrs.split(";")
+        cidr_list = cidrs.split(",")
         helm_install_values = mock_install.call_args[0][3]
         self.assertEqual(
             helm_install_values["apiServer"]["allowedCidrs"], cidr_list
