@@ -83,6 +83,7 @@ class Client:
         version: t.Optional[str] = None,
     ) -> t.Iterable[t.Dict[str, t.Any]]:
         """Install or upgrade specified release using chart and values."""
+        assert release_name is not None
         command = [
             "upgrade",
             release_name,
@@ -117,6 +118,7 @@ class Client:
         namespace: str,
     ):
         """Uninstall the named release."""
+        assert release_name is not None
         command = [
             "uninstall",
             release_name,

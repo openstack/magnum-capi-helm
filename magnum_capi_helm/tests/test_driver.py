@@ -93,7 +93,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
 
         self.driver.update_cluster_status(self.context, self.cluster_obj)
 
-        mock_ng.assert_called_once_with(self.cluster_obj)
+        mock_ng.assert_not_called()
         mock_update.assert_not_called()
         mock_delete.assert_not_called()
 
@@ -126,7 +126,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
 
         self.driver.update_cluster_status(self.context, self.cluster_obj)
 
-        mock_ng.assert_called_once_with(self.cluster_obj)
+        mock_ng.assert_not_called()
         mock_update.assert_not_called()
         mock_delete.assert_called_once_with(self.context, self.cluster_obj)
 

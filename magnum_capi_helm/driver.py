@@ -336,10 +336,12 @@ class Driver(driver.Driver):
         cluster.save()
 
     def _get_capi_cluster(self, cluster):
-        return self._k8s_client.get_capi_cluster(
-            driver_utils.chart_release_name(cluster),
-            driver_utils.cluster_namespace(cluster),
-        )
+        release_name = driver_utils.chart_release_name(cluster)
+        if release_name:
+            return self._k8s_client.get_capi_cluster(
+                release_name,
+                driver_utils.cluster_namespace(cluster),
+            )
 
     def _update_all_nodegroups_status(self, cluster):
         """Returns True if any node group still in progress."""
@@ -373,14 +375,18 @@ class Driver(driver.Driver):
 
         # TODO(mkjpryor) Add a timeout for create/update/delete
 
-        # Update the cluster API address if it is known
-        # so users can get their coe credentials
         capi_cluster = self._get_capi_cluster(cluster)
-        self._update_cluster_api_address(cluster, capi_cluster)
 
-        # Update the nodegroups first
-        # to ensure API never returns an inconsistent state
-        nodegroups_in_progress = self._update_all_nodegroups_status(cluster)
+        if capi_cluster:
+            # Update the cluster API address if it is known
+            # so users can get their coe credentials
+            self._update_cluster_api_address(cluster, capi_cluster)
+
+            # Update the nodegroups first
+            # to ensure API never returns an inconsistent state
+            nodegroups_in_progress = self._update_all_nodegroups_status(
+                cluster
+            )
 
         if cluster.status in {
             fields.ClusterStatus.CREATE_IN_PROGRESS,
@@ -927,14 +933,19 @@ class Driver(driver.Driver):
             ng.status = fields.ClusterStatus.DELETE_IN_PROGRESS
             ng.save()
 
-        # Begin the deletion of the cluster resources by uninstalling the
-        # Helm release
-        # Note that this just marks the resources for deletion - it does not
-        # wait for the resources to be deleted
-        self._helm_client.uninstall_release(
-            driver_utils.chart_release_name(cluster),
-            namespace=driver_utils.cluster_namespace(cluster),
-        )
+        release_name = driver_utils.chart_release_name(cluster)
+        # Only attempt deletion of CAPI resources if they were created in
+        # the first place e.g. if trust creation fails during cluster create
+        # then no CAPI resources will have been created.
+        if release_name:
+            # Begin the deletion of the cluster resources by uninstalling the
+            # Helm release.
+            # Note that this just marks the resources for deletion,
+            # it does not wait for the resources to be deleted.
+            self._helm_client.uninstall_release(
+                release_name,
+                namespace=driver_utils.cluster_namespace(cluster),
+            )
 
     def resize_cluster(
         self,
