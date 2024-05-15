@@ -1186,7 +1186,16 @@ class ClusterAPIDriverTest(base.DbTestCase):
                 "monitoring": {"enabled": False},
                 "kubernetesDashboard": {"enabled": True},
                 "ingress": {"enabled": False},
-                "openstack": {"csiCinder": mock.ANY},
+                "openstack": {
+                    "csiCinder": mock.ANY,
+                    "cloudConfig": {
+                        "LoadBalancer": {
+                            "lb-provider": "amphora",
+                            "lb-method": "ROUND_ROBIN",
+                            "create-monitor": True,
+                        },
+                    },
+                },
             },
             "nodeGroups": [
                 {
@@ -2001,7 +2010,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "type3", storage_classes["defaultStorageClass"]["volumeType"]
         )
         self.assertEqual(
-            "middleeartheast",
+            "middle_earth_east",
             storage_classes["additionalStorageClasses"][0]["availabilityZone"],
         )
 
@@ -2500,4 +2509,189 @@ class ClusterAPIDriverTest(base.DbTestCase):
             .get("openstack", {})
             .get("k8sKeystoneAuth", {})
             .get("enabled")
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_octavia_provider_amphora(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        # Simulate setting provider label
+        self.cluster_obj.labels = {
+            "octavia_provider": "amphora",
+            "octavia_lb_algorithm": "SOURCE_IP_PORT",
+        }
+
+        self.driver.create_cluster(
+            self.context, self.cluster_obj, "timeout-not-used"
+        )
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values.get("apiServer", {}).get(
+                "loadBalancerProvider"
+            ),
+            "amphora",
+        )
+        self.assertEqual(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("cloudConfig", {})
+            .get("LoadBalancer", {})
+            .get("lb-provider"),
+            "amphora",
+        )
+        self.assertEqual(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("cloudConfig", {})
+            .get("LoadBalancer", {})
+            .get("lb-method"),
+            "SOURCE_IP_PORT",
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_octavia_provider_ovn(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        # Simulate setting provider label
+        self.cluster_obj.labels = {
+            "octavia_provider": "ovn",
+        }
+
+        self.driver.create_cluster(
+            self.context, self.cluster_obj, "timeout-not-used"
+        )
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values.get("apiServer", {}).get(
+                "loadBalancerProvider"
+            ),
+            "ovn",
+        )
+        self.assertEqual(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("cloudConfig", {})
+            .get("LoadBalancer", {})
+            .get("lb-provider"),
+            "ovn",
+        )
+        # Check algorithm default if no label provided
+        self.assertEqual(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("cloudConfig", {})
+            .get("LoadBalancer", {})
+            .get("lb-method"),
+            "SOURCE_IP_PORT",
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_octavia_disable_monitor(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        # Simulate setting provider label
+        self.cluster_obj.labels = {
+            "octavia_lb_healthcheck": False,
+        }
+
+        self.driver.create_cluster(
+            self.context, self.cluster_obj, "timeout-not-used"
+        )
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertFalse(
+            helm_install_values["addons"]
+            .get("openstack", {})
+            .get("cloudConfig", {})
+            .get("LoadBalancer", {})
+            .get("create-monitor")
         )

@@ -465,7 +465,7 @@ class Driver(driver.Driver):
             return default
         raw = all_labels.get(key, default)
         # NOTE(johngarbutt): filtering untrusted user input
-        return re.sub(r"[^a-zA-Z0-9\.\-\/ ]+", "", raw)
+        return re.sub(r"[^a-zA-Z0-9\.\-\/ _]+", "", raw)
 
     def _get_label_bool(self, cluster, label, default):
         cluster_label = self._label(cluster, label, "")
@@ -648,6 +648,17 @@ class Driver(driver.Driver):
             CONF.capi_helm.csi_cinder_allow_volume_expansion,
         )
 
+    def _get_octavia_provider(self, cluster):
+        return self._label(cluster, "octavia_provider", "amphora")
+
+    def _get_octavia_lb_algorithm(self, cluster):
+        provider = self._get_octavia_provider(cluster)
+        return self._label(
+            cluster,
+            "octavia_lb_algorithm",
+            "SOURCE_IP_PORT" if provider.lower() == "ovn" else "ROUND_ROBIN",
+        )
+
     def _get_allowed_cidrs(self, cluster):
         cidr_list = cluster.labels.get("api_master_lb_allowed_cidrs", "")
         LOG.debug(f"CIDR list {cidr_list}")
@@ -730,9 +741,7 @@ class Driver(driver.Driver):
             "etcd": self._get_etcd_config(cluster),
             "apiServer": {
                 "enableLoadBalancer": True,
-                "loadBalancerProvider": self._label(
-                    cluster, "octavia_provider", "amphora"
-                ),
+                "loadBalancerProvider": self._get_octavia_provider(cluster),
             },
             "clusterNetworking": {
                 "dnsNameservers": self._get_dns_nameservers(cluster),
@@ -776,7 +785,18 @@ class Driver(driver.Driver):
                 "openstack": {
                     "csiCinder": self._storageclass_definitions(
                         context, cluster
-                    )
+                    ),
+                    "cloudConfig": {
+                        "LoadBalancer": {
+                            "lb-provider": self._get_octavia_provider(cluster),
+                            "lb-method": self._get_octavia_lb_algorithm(
+                                cluster
+                            ),
+                            "create-monitor": self._get_label_bool(
+                                cluster, "octavia_lb_healthcheck", True
+                            ),
+                        }
+                    },
                 },
                 "monitoring": {
                     "enabled": self._get_monitoring_enabled(cluster)
