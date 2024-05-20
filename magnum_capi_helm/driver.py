@@ -578,30 +578,20 @@ class Driver(driver.Driver):
     def _get_autoheal_enabled(self, cluster):
         return self._get_label_bool(cluster, "auto_healing_enabled", True)
 
-    def _get_autoscale(self, cluster, nodegroup):
-        auto_scale = self._get_label_bool(
-            cluster, "auto_scaling_enabled", False
+    def _get_autoscale_enabled(self, cluster):
+        return self._get_label_bool(cluster, "auto_scaling_enabled", False)
+
+    def _get_autoscale_values(self, cluster, nodegroup):
+        auto_scale = self._get_autoscale_enabled(cluster)
+        min_nodes, max_nodes = self._validate_allowed_node_counts(
+            cluster, nodegroup
         )
-        if auto_scale:
-            auto_scale_args = dict(autoscale="true")
-            min_nodes = max(1, nodegroup.min_node_count)
-            max_nodes = self._get_label_int(
-                cluster, "max_node_count", min_nodes
-            )
-            if min_nodes > nodegroup.node_count:
-                raise exception.MagnumException(
-                    message="min_node_count must be less than or equal to "
-                    "default-worker nodegroup node_count."
-                )
+        auto_scale_args = {}
+        if auto_scale and max_nodes is not None:
+            auto_scale_args["autoscale"] = "true"
             auto_scale_args["machineCountMin"] = min_nodes
-            if max_nodes < min_nodes:
-                raise exception.MagnumException(
-                    message="max_node_count must be greater than or "
-                    "equal to min_node_count"
-                )
             auto_scale_args["machineCountMax"] = max_nodes
-            return auto_scale_args
-        return auto_scale
+        return auto_scale_args
 
     def _get_k8s_keystone_auth_enabled(self, cluster):
         return self._get_label_bool(cluster, "keystone_auth_enabled", False)
@@ -644,6 +634,58 @@ class Driver(driver.Driver):
             f"have enough RAM to run Kubernetes. "
             f"Minimum {CONF.capi_helm.minimum_flavor_ram} MB required."
         )
+
+    def _is_default_worker_nodegroup(self, cluster, nodegroup):
+        return cluster.default_ng_worker.id == nodegroup.id
+
+    def _get_node_counts(self, cluster, nodegroup):
+
+        # ClusterAPI provider OpenStack (CAPO) doesn't
+        # support scale to zero yet
+        min_nodes = max(1, nodegroup.min_node_count)
+        max_nodes = nodegroup.max_node_count
+
+        # If min/max node counts are not defined on the default
+        # worker group then fall back to equivalent cluster labels
+        if self._is_default_worker_nodegroup(cluster, nodegroup):
+            # Magnum seems to set min_node_count = 1 on default group
+            # but we still want to be able to override that with labels
+            if min_nodes is None or min_nodes == 1:
+                min_nodes = self._get_label_int(cluster, "min_node_count", 1)
+            if not max_nodes:
+                max_nodes = self._get_label_int(
+                    cluster, "max_node_count", min_nodes
+                )
+
+        return min_nodes, max_nodes
+
+    def _validate_allowed_node_counts(self, cluster, nodegroup):
+        min_nodes, max_nodes = self._get_node_counts(cluster, nodegroup)
+
+        LOG.debug(
+            f"Checking if node group {nodegroup.name} has valid "
+            f"node count parameters (count, min, max) = "
+            f"{(nodegroup.node_count, min_nodes, max_nodes)}"
+        )
+
+        if min_nodes is not None:
+            if min_nodes < 1:
+                raise exception.NodeGroupInvalidInput(
+                    message="Min node count must be greater than "
+                    "or equal to 1 for all node groups."
+                )
+            if min_nodes > nodegroup.node_count:
+                raise exception.NodeGroupInvalidInput(
+                    message="Min node count must be less than "
+                    "or equal to current node count"
+                )
+            if max_nodes is not None and max_nodes < min_nodes:
+                raise exception.NodeGroupInvalidInput(
+                    message="Max node count must be greater than "
+                    "or equal to min node count"
+                )
+
+        return min_nodes, max_nodes
 
     def _get_csi_cinder_availability_zone(self, cluster):
         return self._label(
@@ -757,13 +799,9 @@ class Driver(driver.Driver):
                     machineFlavor=ng.flavor_id,
                     machineCount=ng.node_count,
                 )
-                # Assume first nodegroup is default-worker.
-                if not nodegroup_set:
-                    auto_scale = self._get_autoscale(cluster, ng)
-                    if auto_scale:
-                        nodegroup_item = helm.mergeconcat(
-                            nodegroup_item, auto_scale
-                        )
+                if self._get_autoscale_enabled(cluster):
+                    values = self._get_autoscale_values(cluster, ng)
+                    nodegroup_item = helm.mergeconcat(nodegroup_item, values)
                 nodegroup_set.append(nodegroup_item)
         return nodegroup_set
 
@@ -1037,6 +1075,8 @@ class Driver(driver.Driver):
     def create_nodegroup(self, context, cluster, nodegroup):
         nodegroup.status = fields.ClusterStatus.CREATE_IN_PROGRESS
         self._validate_allowed_flavor(context, nodegroup.flavor_id)
+        if self._get_autoscale_enabled(cluster):
+            self._validate_allowed_node_counts(cluster, nodegroup)
         nodegroup.save()
 
         self._update_helm_release(context, cluster)
@@ -1044,6 +1084,8 @@ class Driver(driver.Driver):
     def update_nodegroup(self, context, cluster, nodegroup):
         nodegroup.status = fields.ClusterStatus.UPDATE_IN_PROGRESS
         self._validate_allowed_flavor(context, nodegroup.flavor_id)
+        if self._get_autoscale_enabled(cluster):
+            self._validate_allowed_node_counts(cluster, nodegroup)
         nodegroup.save()
 
         self._update_helm_release(context, cluster)
