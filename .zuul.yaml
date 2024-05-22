@@ -65,4 +65,5 @@
     templates:
       - openstack-cover-jobs-magnum
       - openstack-python3-jobs-magnum
+      - release-notes-jobs-python3
       - publish-openstack-docs-pti

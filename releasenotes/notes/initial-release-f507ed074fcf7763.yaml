@@ -1,0 +1,17 @@
+---
+prelude: >
+    * This is the initial release of a new in-tree Magnum driver which leverages
+      Helm and the Kubernetes `Cluster API <https://github.com/kubernetes-sigs/cluster-api>`_
+      project to provide an alternative to the existing Heat driver for creating
+      and managing Kubernetes clusters via OpenStack Magnum.
+
+    * This project started life as a out-of-tree driver which was developed and maintained
+      at https://github.com/stackhpc/magnum-capi-helm. This 1.0.0 release marks the deprecation
+      of this out-of-tree source repository and the first official release of the in-tree
+      version which is under OpenStack governance, with source code now available at
+      https://opendev.org/openstack/magnum-capi-helm.
+
+    * The driver is generally ready for production use and has been deployed on a number of
+      OpenStack systems prior to this first official release. However, this does not preclude
+      the possibility of unforeseen issues and omissions at this early stage of the release
+      cycle - bug reports welcome and appreciated!
