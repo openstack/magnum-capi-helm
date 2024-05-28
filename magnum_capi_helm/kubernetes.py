@@ -216,6 +216,7 @@ class Resource:
         If the object is not found, None is returned.
         """
         assert self.namespaced == bool(namespace)
+        assert name is not None
         response = self.client.get(self.prepare_path(name, namespace))
         if 200 <= response.status_code < 300:
             return response.json()
