@@ -10,6 +10,7 @@
 # License for the specific language governing permissions and limitations
 # under the License.
 from unittest import mock
+from uuid import uuid4
 
 from magnum.common import exception
 from magnum.common import neutron
@@ -2702,7 +2703,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
         )
         self.assertRaises(
             exception.MagnumException,
-            self.driver._get_autoscale,
+            self.driver._get_autoscale_values,
             self.cluster_obj,
             self.cluster_obj.nodegroups[0],
         )
@@ -2755,10 +2756,9 @@ class ClusterAPIDriverTest(base.DbTestCase):
             helm_install_values["nodeGroups"][0]["autoscale"],
             auto_scale_labels["auto_scaling_enabled"],
         )
-        # min_node_count is hardcode to max(1, ng.min_node_count)
         self.assertEqual(
             helm_install_values["nodeGroups"][0]["machineCountMin"],
-            self.cluster_obj.nodegroups[0].min_node_count,
+            auto_scale_labels["min_node_count"],
         )
         self.assertEqual(
             helm_install_values["nodeGroups"][0]["machineCountMax"],
@@ -2821,3 +2821,163 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "machineCountMax",
             helm_install_values["nodeGroups"][0],
         )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_nodegroup_node_count_validation(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        auto_scale_labels = dict(
+            auto_scaling_enabled="true", min_node_count=2, max_node_count=6
+        )
+        self.cluster_obj.labels = auto_scale_labels
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+
+        # Create cluster with extra node groups
+        ng = obj_utils.create_test_nodegroup(
+            self.context, min_node_count=3, max_node_count=2
+        )
+        self.cluster_obj.nodegroups.append(ng)
+        self.assertRaises(
+            exception.NodeGroupInvalidInput,
+            self.driver.create_cluster,
+            self.context,
+            self.cluster_obj,
+            "not-used",
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_extra_nodegroup_auto_scale_values(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        auto_scale_labels = dict(
+            auto_scaling_enabled="true", min_node_count=2, max_node_count=6
+        )
+        self.cluster_obj.labels = auto_scale_labels
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+
+        # Create cluster with extra node groups
+        non_auto_scale_nodegroup = obj_utils.create_test_nodegroup(
+            self.context,
+            uuid=uuid4(),
+            id=123,
+            name="non-autoscale-group",
+            node_count=1,
+        )
+        self.cluster_obj.nodegroups.append(non_auto_scale_nodegroup)
+        auto_scale_nodegroup = obj_utils.create_test_nodegroup(
+            self.context,
+            uuid=uuid4(),
+            id=456,
+            name="autoscale-group",
+            node_count=1,
+            min_node_count=0,
+            max_node_count=3,
+        )
+        self.cluster_obj.nodegroups.append(auto_scale_nodegroup)
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        for ng in self.cluster_obj.nodegroups:
+            print(ng)
+
+        # Unpack some values for asserting against
+        helm_install_values = mock_install.call_args[0][3]
+        helm_node_groups = helm_install_values["nodeGroups"]
+        helm_values_default_nodegroup = [
+            ng
+            for ng in helm_node_groups
+            if ng["name"] == self.cluster_obj.default_ng_worker.name
+        ]
+        helm_values_autoscale_nodegroup = [
+            ng
+            for ng in helm_node_groups
+            if ng["name"] == auto_scale_nodegroup.name
+        ]
+        helm_values_non_autoscale_nodegroup = [
+            ng
+            for ng in helm_node_groups
+            if ng["name"] == non_auto_scale_nodegroup.name
+        ]
+
+        # Check that node groups were passed into Helm values correctly
+        self.assertEqual(len(helm_values_default_nodegroup), 1)
+        self.assertEqual(len(helm_values_autoscale_nodegroup), 1)
+        self.assertEqual(len(helm_values_non_autoscale_nodegroup), 1)
+
+        # Check default node group values
+        ng = helm_values_default_nodegroup[0]
+        self.assertEqual(ng["autoscale"], "true")
+        self.assertEqual(
+            ng["machineCountMin"], auto_scale_labels["min_node_count"]
+        )
+        self.assertEqual(
+            ng["machineCountMax"], auto_scale_labels["max_node_count"]
+        )
+
+        # Check extra autoscaling node group values
+        # NOTE: CAPO doesn't support scale to zero so
+        # min node count should be max(1, ng.min_node_count)
+        ng = helm_values_autoscale_nodegroup[0]
+        self.assertEqual(ng["autoscale"], "true")
+        self.assertEqual(
+            ng["machineCountMin"], max(1, auto_scale_nodegroup.min_node_count)
+        )
+        self.assertEqual(
+            ng["machineCountMax"], auto_scale_nodegroup.max_node_count
+        )
+
+        # Check extra non-autoscaling node group values
+        ng = helm_values_non_autoscale_nodegroup[0]
+        self.assertEqual(ng.get("autoscale"), None)
+        self.assertEqual(ng.get("machineCountMin"), None)
+        self.assertEqual(ng.get("machineCountMax"), None)

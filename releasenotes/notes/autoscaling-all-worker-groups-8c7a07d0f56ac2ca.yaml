@@ -1,0 +1,10 @@
+---
+features:
+  - |
+    Adds support for autoscaling of non-default worker node groups. The min/max
+    node count properties on each node group are passed to the autoscaler to
+    determine autoscaling behaviour. If the target cluster has the
+    `auto_scaling_enabled` cluster label set to `true` then any node groups with
+    both `min_node_count`` and `max_node_count` properties set will be allowed
+    to autoscale between these min and max node counts depending on the cluster's
+    current workload.
