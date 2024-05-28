@@ -2695,3 +2695,129 @@ class ClusterAPIDriverTest(base.DbTestCase):
             .get("LoadBalancer", {})
             .get("create-monitor")
         )
+
+    def test_validate_auto_scale_max_lt_min(self):
+        self.cluster_obj.labels = dict(
+            auto_scaling_enabled="true", min_node_count=3, max_node_count=0
+        )
+        self.assertRaises(
+            exception.MagnumException,
+            self.driver._get_autoscale,
+            self.cluster_obj,
+            self.cluster_obj.nodegroups[0],
+        )
+
+    @mock.patch.object(
+        driver.Driver, "_get_k8s_keystone_auth_enabled", return_value=False
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_auto_scale_enabled(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_get_keystone_auth_enabled,
+    ):
+        auto_scale_labels = dict(
+            auto_scaling_enabled="true", min_node_count=2, max_node_count=6
+        )
+        self.cluster_obj.labels = auto_scale_labels
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values["nodeGroups"][0]["autoscale"],
+            auto_scale_labels["auto_scaling_enabled"],
+        )
+        # min_node_count is hardcode to max(1, ng.min_node_count)
+        self.assertEqual(
+            helm_install_values["nodeGroups"][0]["machineCountMin"],
+            self.cluster_obj.nodegroups[0].min_node_count,
+        )
+        self.assertEqual(
+            helm_install_values["nodeGroups"][0]["machineCountMax"],
+            auto_scale_labels["max_node_count"],
+        )
+
+    @mock.patch.object(
+        driver.Driver, "_get_k8s_keystone_auth_enabled", return_value=False
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_auto_scale_disabled(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_get_keystone_auth_enabled,
+    ):
+        auto_scale_labels = dict(
+            auto_scaling_enabled="false", min_node_count=2, max_node_count=6
+        )
+        self.cluster_obj.labels = auto_scale_labels
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertNotIn(
+            "autoscale",
+            helm_install_values["nodeGroups"][0],
+        )
+        self.assertNotIn(
+            "machineCountMin",
+            helm_install_values["nodeGroups"][0],
+        )
+        self.assertNotIn(
+            "machineCountMax",
+            helm_install_values["nodeGroups"][0],
+        )

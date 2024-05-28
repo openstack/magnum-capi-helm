@@ -584,6 +584,31 @@ class Driver(driver.Driver):
     def _get_autoheal_enabled(self, cluster):
         return self._get_label_bool(cluster, "auto_healing_enabled", True)
 
+    def _get_autoscale(self, cluster, nodegroup):
+        auto_scale = self._get_label_bool(
+            cluster, "auto_scaling_enabled", False
+        )
+        if auto_scale:
+            auto_scale_args = dict(autoscale="true")
+            min_nodes = max(1, nodegroup.min_node_count)
+            max_nodes = self._get_label_int(
+                cluster, "max_node_count", min_nodes
+            )
+            if min_nodes > nodegroup.node_count:
+                raise exception.MagnumException(
+                    message="min_node_count must be less than or equal to "
+                    "default-worker nodegroup node_count."
+                )
+            auto_scale_args["machineCountMin"] = min_nodes
+            if max_nodes < min_nodes:
+                raise exception.MagnumException(
+                    message="max_node_count must be greater than or "
+                    "equal to min_node_count"
+                )
+            auto_scale_args["machineCountMax"] = max_nodes
+            return auto_scale_args
+        return auto_scale
+
     def _get_k8s_keystone_auth_enabled(self, cluster):
         return self._get_label_bool(cluster, "keystone_auth_enabled", False)
 
@@ -728,6 +753,26 @@ class Driver(driver.Driver):
             additionalStorageClasses=additional_storage_classes,
         )
 
+    def _process_node_groups(self, cluster):
+        nodegroups = cluster.nodegroups
+        nodegroup_set = []
+        for ng in nodegroups:
+            if ng.role != NODE_GROUP_ROLE_CONTROLLER:
+                nodegroup_item = dict(
+                    name=driver_utils.sanitized_name(ng.name),
+                    machineFlavor=ng.flavor_id,
+                    machineCount=ng.node_count,
+                )
+                # Assume first nodegroup is default-worker.
+                if not nodegroup_set:
+                    auto_scale = self._get_autoscale(cluster, ng)
+                    if auto_scale:
+                        nodegroup_item = helm.mergeconcat(
+                            nodegroup_item, auto_scale
+                        )
+                nodegroup_set.append(nodegroup_item)
+        return nodegroup_set
+
     def _update_helm_release(self, context, cluster, nodegroups=None):
         if nodegroups is None:
             nodegroups = cluster.nodegroups
@@ -778,15 +823,7 @@ class Driver(driver.Driver):
                     "enabled": self._get_autoheal_enabled(cluster),
                 },
             },
-            "nodeGroups": [
-                {
-                    "name": driver_utils.sanitized_name(ng.name),
-                    "machineFlavor": ng.flavor_id,
-                    "machineCount": ng.node_count,
-                }
-                for ng in nodegroups
-                if ng.role != NODE_GROUP_ROLE_CONTROLLER
-            ],
+            "nodeGroups": self._process_node_groups(cluster),
             "addons": {
                 "openstack": {
                     "csiCinder": self._storageclass_definitions(
