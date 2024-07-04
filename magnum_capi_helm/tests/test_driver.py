@@ -2981,3 +2981,165 @@ class ClusterAPIDriverTest(base.DbTestCase):
         self.assertEqual(ng.get("autoscale"), None)
         self.assertEqual(ng.get("machineCountMin"), None)
         self.assertEqual(ng.get("machineCountMax"), None)
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_boot_volume_size_label_valid(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        disk_size_configuration_value = 15
+        disk_size_label_value = 32
+
+        CONF.cinder.default_boot_volume_size = disk_size_configuration_value
+        self.cluster_obj.labels = {
+            "boot_volume_size": str(disk_size_label_value)
+        }
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values["controlPlane"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_label_value,
+        )
+        self.assertEqual(
+            helm_install_values["nodeGroupDefaults"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_label_value,
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_boot_volume_size_label_default(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        disk_size_configuration_value = 15
+
+        CONF.cinder.default_boot_volume_size = disk_size_configuration_value
+        self.cluster_obj.labels = {}
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values["controlPlane"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_configuration_value,
+        )
+        self.assertEqual(
+            helm_install_values["nodeGroupDefaults"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_configuration_value,
+        )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_boot_volume_size_label_invalid(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        disk_size_configuration_value = 15
+
+        CONF.cinder.default_boot_volume_size = disk_size_configuration_value
+        self.cluster_obj.labels = {"boot_volume_size": "NotANumber"}
+
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            helm_install_values["controlPlane"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_configuration_value,
+        )
+        self.assertEqual(
+            helm_install_values["nodeGroupDefaults"]["machineRootVolume"][
+                "diskSize"
+            ],
+            disk_size_configuration_value,
+        )
