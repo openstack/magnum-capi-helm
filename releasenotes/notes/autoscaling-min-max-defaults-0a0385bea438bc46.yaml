@@ -1,0 +1,8 @@
+---
+fixes:
+  - |
+    Fixes an issue where creating a cluster with the 2 or more
+    nodes in the default worker group and with `auto_scaling_enabled=true`
+    but with neither `{min,max}_node_count` labels set would lead
+    to a situation where the default worker group would only have 1
+    node instead of 2.

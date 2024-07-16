@@ -2922,7 +2922,7 @@ class ClusterAPIDriverTest(base.DbTestCase):
             id=456,
             name="autoscale-group",
             node_count=1,
-            min_node_count=0,
+            min_node_count=1,
             max_node_count=3,
         )
         self.cluster_obj.nodegroups.append(auto_scale_nodegroup)
@@ -3143,3 +3143,49 @@ class ClusterAPIDriverTest(base.DbTestCase):
             ],
             disk_size_configuration_value,
         )
+
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_nodegroup_node_count_min_max_equal(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+    ):
+        # When autoscaling is enabled but no min/max node counts are
+        # provided for the default node group, we want autoscaling to
+        # be disabled on the default node group.
+        self.cluster_obj.labels = {"auto_scaling_enabled": "true"}
+        mock_image.return_value = (
+            "imageid1",
+            "1.27.4",
+            "ubuntu",
+        )
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+        helm_install_values = mock_install.call_args[0][3]
+        helm_values_default_ng = next(
+            ng
+            for ng in helm_install_values["nodeGroups"]
+            if ng["name"] == self.cluster_obj.default_ng_worker.name
+        )
+        self.assertEqual(helm_values_default_ng.get("autoscale"), None)
+        self.assertEqual(helm_values_default_ng.get("machineCountMin"), None)
+        self.assertEqual(helm_values_default_ng.get("machineCountMax"), None)
+        self.assertEqual(helm_values_default_ng.get("machineCount"), 3)

@@ -593,7 +593,7 @@ class Driver(driver.Driver):
             cluster, nodegroup
         )
         auto_scale_args = {}
-        if auto_scale and max_nodes is not None:
+        if auto_scale and min_nodes != max_nodes:
             auto_scale_args["autoscale"] = "true"
             auto_scale_args["machineCountMin"] = min_nodes
             auto_scale_args["machineCountMax"] = max_nodes
@@ -646,22 +646,37 @@ class Driver(driver.Driver):
 
     def _get_node_counts(self, cluster, nodegroup):
 
-        # ClusterAPI provider OpenStack (CAPO) doesn't
-        # support scale to zero yet
-        min_nodes = max(1, nodegroup.min_node_count)
-        max_nodes = nodegroup.max_node_count
+        # NOTE(scott): In CAPI MachineDeployment resources created by the
+        # capi-helm-charts, the `replicas` field is omitted when autoscaling
+        # is enabled (since we're relinquishing control over node count to
+        # the autoscaler) so if a user creates a nodegroup where only
+        # node_count is provided and min/max are not, we need to be careful
+        # about setting the default min/max values to equal node_count.
+        min_nodes = nodegroup.node_count
+        max_nodes = nodegroup.node_count
+
+        if nodegroup.min_node_count is not None:
+            min_nodes = nodegroup.min_node_count
+        if nodegroup.max_node_count is not None:
+            max_nodes = nodegroup.max_node_count
 
         # If min/max node counts are not defined on the default
         # worker group then fall back to equivalent cluster labels
         if self._is_default_worker_nodegroup(cluster, nodegroup):
-            # Magnum seems to set min_node_count = 1 on default group
-            # but we still want to be able to override that with labels
-            if min_nodes is None or min_nodes == 1:
-                min_nodes = self._get_label_int(cluster, "min_node_count", 1)
-            if not max_nodes:
-                max_nodes = self._get_label_int(
-                    cluster, "max_node_count", min_nodes
-                )
+            # NOTE(scott): Magnum seems to set min_node_count = 1
+            # on the default group so treat this as if it were None
+            if nodegroup.min_node_count == 1:
+                min_nodes = nodegroup.node_count
+
+            # We still want to be able to override the default node
+            # group values with labels for consistent behaviour with
+            # Magnum Heat driver.
+            min_nodes = self._get_label_int(
+                cluster, "min_node_count", min_nodes
+            )
+            max_nodes = self._get_label_int(
+                cluster, "max_node_count", max_nodes
+            )
 
         return min_nodes, max_nodes
 
@@ -675,6 +690,8 @@ class Driver(driver.Driver):
         )
 
         if min_nodes is not None:
+            # ClusterAPI Provider OpenStack (CAPO)
+            # doesn't support scale to zero yet.
             if min_nodes < 1:
                 raise exception.NodeGroupInvalidInput(
                     message="Min node count must be greater than "
