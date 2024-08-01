@@ -40,7 +40,7 @@ capi_helm_opts = [
     ),
     cfg.StrOpt(
         "helm_chart_repo",
-        default="https://stackhpc.github.io/capi-helm-charts",
+        default="https://azimuth-cloud.github.io/capi-helm-charts",
         help=(
             "Reference to the helm chart repository for "
             "the cluster API driver. "
@@ -58,7 +58,7 @@ capi_helm_opts = [
     ),
     cfg.StrOpt(
         "default_helm_chart_version",
-        default="0.4.0",
+        default="0.10.1",
         help=(
             "Version of the helm chart specified "
             "by the config: capi_driver.helm_chart_repo "

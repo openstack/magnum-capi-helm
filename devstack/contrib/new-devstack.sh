@@ -187,9 +187,9 @@ if [[ ":$PATH:" != *":$new_path:"* ]]; then
 fi
 
 # Get latest capi-helm-charts tag
-LATEST_TAG=$(curl -fsL https://api.github.com/repos/stackhpc/capi-helm-charts/tags | jq -r '.[0].name')
+LATEST_TAG=$(curl -fsL https://api.github.com/repos/azimuth-cloud/capi-helm-charts/tags | jq -r '.[0].name')
 # Curl the dependencies URL
-DEPENDENCIES_JSON=$(curl -fsL https://github.com/stackhpc/capi-helm-charts/releases/download/$LATEST_TAG/dependencies.json)
+DEPENDENCIES_JSON=$(curl -fsL https://github.com/azimuth-cloud/capi-helm-charts/releases/download/$LATEST_TAG/dependencies.json)
 
 # Parse JSON into bash variables
 ADDON_PROVIDER=$(echo $DEPENDENCIES_JSON | jq -r '.["addon-provider"]')
@@ -238,7 +238,7 @@ sudo install -o root -g root -m 0755 clusterctl /usr/local/bin/clusterctl
 
 # Install Cluster API resources
 # using the matching tested values here:
-# https://github.com/stackhpc/capi-helm-charts/blob/main/dependencies.json
+# https://github.com/azimuth-cloud/capi-helm-charts/blob/main/dependencies.json
 clusterctl init \
     --core cluster-api:$CLUSTER_API \
     --bootstrap kubeadm:$CLUSTER_API \
@@ -248,7 +248,7 @@ clusterctl init \
 # Install addon manager
 helm upgrade cluster-api-addon-provider cluster-api-addon-provider \
   --install \
-  --repo https://stackhpc.github.io/cluster-api-addon-provider \
+  --repo https://azimuth-cloud.github.io/cluster-api-addon-provider \
   --version $ADDON_PROVIDER \
   --namespace capi-addon-system \
   --create-namespace \
@@ -258,7 +258,7 @@ helm upgrade cluster-api-addon-provider cluster-api-addon-provider \
 # Install janitor
 helm upgrade cluster-api-janitor-openstack cluster-api-janitor-openstack \
   --install \
-  --repo https://stackhpc.github.io/cluster-api-janitor-openstack \
+  --repo https://azimuth-cloud.github.io/cluster-api-janitor-openstack \
   --version $CLUSTER_API_JANITOR_OPENSTACK \
   --namespace capi-janitor-system \
   --create-namespace \
@@ -274,7 +274,7 @@ source /opt/stack/openrc admin admin
 openstack flavor create ds2G20 --ram 2048 --disk 20 --id d5 --vcpus 2 --public
 
 # Curl the manifest
-AZIMUTH_IMAGES=$(curl -fsL "https://github.com/stackhpc/azimuth-images/releases/download/$AZIMUTH_IMAGES_TAG/manifest.json")
+AZIMUTH_IMAGES=$(curl -fsL "https://github.com/azimuth-cloud/azimuth-images/releases/download/$AZIMUTH_IMAGES_TAG/manifest.json")
 
 # Get the keys of the Kubernetes images
 K8S_IMAGE_KEYS="$(echo "$AZIMUTH_IMAGES" | jq -r '. | with_entries(select(.value | has("kubernetes_version"))) | keys | sort | .[]')"

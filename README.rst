@@ -5,7 +5,7 @@ magnum-capi-helm
 OpenStack Magnum driver using Helm to create k8s clusters
 with Cluster API.
 
-The driver uses `capi-helm-charts <https://github.com/stackhpc/capi-helm-charts>`_
+The driver uses `capi-helm-charts <https://github.com/azimuth-cloud/capi-helm-charts>`_
 to create the k8s resources needed to provision a k8s cluster using
 Cluster API, including various useful add-ons like a CNI and a monitoring
 stack.

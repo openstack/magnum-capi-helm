@@ -25,9 +25,7 @@ The driver uses a standard set of Helm charts to create the k8s resources
 required to provision and manage a k8s cluster using Cluster API,
 including various useful add-ons like a CNI and a monitoring stack.
 
-These Helm charts currently live at https://github.com/stackhpc/capi-helm-charts
-but will soon be moved to https://opendev.org/openstack/magnum-capi-helm-charts
-instead.
+These Helm charts currently live at https://github.com/azimuth-cloud/capi-helm-charts.
 
 The Helm charts are intended to be a way to share a reference method to
 create k8s clusters on OpenStack. The charts are not expected or intended to
