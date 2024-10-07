@@ -10,7 +10,7 @@ Kolla-Ansible-based deployments.
 If you install this Python package within your Magnum virtual environment,
 it should be picked up by Magnum::
 
-  git clone https://github.com/stackhpc/magnum-capi-helm.git
+  git clone https://opendev.org/openstack/magnum-capi-helm.git
   cd magnum-capi-helm
   pip install -e .
 

@@ -9,7 +9,7 @@ The driver currently supports create, delete and upgrade operations as well
 as updates to node groups and their sizes.
 
 The Kubernetes versions against which the CAPI Helm charts are currently being tested
-can be found `here <https://github.com/stackhpc/capi-helm-charts/blob/main/.github/workflows/ensure-capi-images.yaml#L9>`_.
+can be found `here <https://github.com/azimuth-cloud/capi-helm-charts/blob/main/.github/workflows/ensure-capi-images.yaml#L9>`_.
 
 The driver respects the following cluster and template properties:
 

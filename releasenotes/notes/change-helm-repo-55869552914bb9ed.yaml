@@ -1,0 +1,7 @@
+---
+upgrades:
+  - |
+    Default helm repository is updated to 'azimuth-cloud.github.io/capi-helm-charts'.
+deprecations:
+  - |
+    Helm repository 'stackhpc.github.io/capi-helm-charts' is deprecated. The last version supported on this repo is 0.9.0
