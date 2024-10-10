@@ -1,5 +1,5 @@
 ---
-upgrades:
+upgrade:
   - |
     Default helm repository is updated to 'azimuth-cloud.github.io/capi-helm-charts'.
 deprecations:
