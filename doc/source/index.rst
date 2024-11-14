@@ -39,6 +39,14 @@ Azimuth to create clusters outside of Magnum if desired.
 * **Magnum Source:** https://opendev.org/openstack/magnum
 * **Magnum REST Client:** https://opendev.org/openstack/python-magnumclient
 
+User Documentation
+------------------
+
+.. toctree::
+   :maxdepth: 2
+
+   Understanding Concepts <user_docs/index>
+
 Installation Guide
 ------------------
 
