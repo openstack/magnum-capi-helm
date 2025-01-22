@@ -1,0 +1,8 @@
+---
+fixes:
+  - |
+    Fixed an issue where non-default node groups could not be
+    individually deleted. The node groups would get stuck in
+    the DELETE_IN_PROGRESS state and the underlying VMs would
+    keep running. Node groups were only cleaned up when the
+    entire cluster was deleted.
