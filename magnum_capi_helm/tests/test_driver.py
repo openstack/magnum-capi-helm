@@ -2165,24 +2165,37 @@ class ClusterAPIDriverTest(base.DbTestCase):
         node_group.save.assert_called_once_with()
         self.assertEqual("UPDATE_IN_PROGRESS", node_group.status)
 
-    @mock.patch.object(driver.Driver, "_update_helm_release")
-    def test_delete_nodegroup(self, mock_update):
+    @mock.patch.object(driver.Driver, "_get_allowed_cidrs")
+    @mock.patch.object(
+        driver.Driver, "_storageclass_definitions", return_value=mock.ANY
+    )
+    @mock.patch.object(
+        driver.Driver, "_get_image_details", return_value=3 * [mock.ANY]
+    )
+    @mock.patch.object(helm.Client, "install_or_upgrade")
+    def test_delete_nodegroup(
+        self,
+        mock_helm_update,
+        mock_image_details,
+        mock_storageclasses,
+        mock_get_cidrs,
+    ):
+
+        ng_to_delete = next(
+            ng for ng in self.cluster_obj.nodegroups if ng.role == "worker"
+        )
+        self.assertTrue(ng_to_delete is not None)
+
         self.driver.delete_nodegroup(
             self.context,
             self.cluster_obj,
-            self.cluster_obj.nodegroups[1],
+            ng_to_delete,
         )
 
-        mock_update.assert_called_once_with(
-            self.context,
-            self.cluster_obj,
-            mock.ANY,
-        )
-        # because nodegroups equality is broken
-        self.assertEqual(
-            self.cluster_obj.nodegroups[0].as_dict(),
-            mock_update.call_args.args[2][0].as_dict(),
-        )
+        # Check that node group has been removed from Helm values
+        helm_values = mock_helm_update.call_args[0][2]
+        remaining_nodegroups = [ng["name"] for ng in helm_values["nodeGroups"]]
+        self.assertNotIn(ng_to_delete.name, remaining_nodegroups)
 
     def test_create_federation(self):
         self.assertRaises(
