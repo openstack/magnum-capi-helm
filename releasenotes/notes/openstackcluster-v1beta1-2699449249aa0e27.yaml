@@ -1,0 +1,6 @@
+---
+upgrade:
+  - |
+    OpenStackCluster API usage has been updated from v1alpha6 to v1beta1.
+    Before upgrading, cluster-api-provider-openstack should be upgraded to at
+    least v0.10.0, as this is the first version that provides v1beta1.

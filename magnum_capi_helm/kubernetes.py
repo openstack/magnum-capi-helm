@@ -291,7 +291,7 @@ class Cluster(Resource):
 
 
 class OpenstackCluster(Resource):
-    api_version = "infrastructure.cluster.x-k8s.io/v1alpha6"
+    api_version = "infrastructure.cluster.x-k8s.io/v1beta1"
 
 
 class MachineDeployment(Resource):
