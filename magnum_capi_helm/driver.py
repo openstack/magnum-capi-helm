@@ -1050,12 +1050,8 @@ class Driver(driver.Driver):
     def update_cluster(
         self, context, cluster, scale_manager=None, rollback=False
     ):
-        # Cluster API refuses to update things like cluster networking,
-        # so it is safest not to implement this for now
-        # TODO(mkjpryor) Check what bits of update we can support
-        raise NotImplementedError(
-            "Updating a cluster in this way is not currently supported"
-        )
+        # we get here if cluster was patched with new node_count
+        self._update_helm_release(context, cluster)
 
     def delete_cluster(self, context, cluster):
         LOG.info("Starting to delete cluster %s", cluster.uuid)

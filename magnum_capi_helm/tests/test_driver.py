@@ -2076,13 +2076,10 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "cluster-example-a-111111111111", namespace="magnum-fakeproject"
         )
 
-    def test_update_cluster(self):
-        self.assertRaises(
-            NotImplementedError,
-            self.driver.update_cluster,
-            self.context,
-            self.cluster_obj,
-        )
+    @mock.patch.object(driver.Driver, "_update_helm_release")
+    def test_update_cluster(self, mock_update):
+        self.driver.update_cluster(self.context, self.cluster_obj)
+        mock_update.assert_called_once_with(self.context, self.cluster_obj)
 
     @mock.patch.object(driver.Driver, "_update_helm_release")
     def test_resize_cluster(self, mock_update):
