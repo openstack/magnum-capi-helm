@@ -10,6 +10,8 @@
 
 set -ex
 
+OPENSTACK_VERSION="${OPENSTACK_VERSION:-master}"
+
 # Set up the packages we need. Ubuntu package manager is assumed.
 sudo apt-get update
 sudo apt-get install git vim apparmor apparmor-utils jq -y
@@ -18,7 +20,7 @@ sudo apt-get install git vim apparmor apparmor-utils jq -y
 sudo mkdir -p /opt/stack
 if [ ! -f /opt/stack/stack.sh ]; then
     sudo chown -R ${USER}. /opt/stack
-    git clone https://git.openstack.org/openstack-dev/devstack /opt/stack
+    git clone https://git.openstack.org/openstack-dev/devstack -b $OPENSTACK_VERSION /opt/stack
 fi
 
 default_interface=$(ip route show default | awk 'NR==1 {print $5}')
@@ -79,13 +81,14 @@ enable_service q-svc
 # disable_service q-meta
 
 # Enable services, these services depend on neutron plugin.
-enable_plugin neutron https://opendev.org/openstack/neutron
+enable_plugin neutron https://opendev.org/openstack/neutron $OPENSTACK_VERSION
 enable_service q-trunk
 enable_service q-dns
 #enable_service q-qos
 FIXED_RANGE=10.1.0.0/24
 
 # Enable octavia tempest plugin tests
+# NOTE: Doesn't follow standard OS branch naming conventions
 enable_plugin octavia-tempest-plugin https://opendev.org/openstack/octavia-tempest-plugin
 
 # Horizon config
@@ -140,9 +143,9 @@ LIBVIRT_TYPE=kvm
 # Octavia configuration
 OCTAVIA_NODE="api"
 DISABLE_AMP_IMAGE_BUILD=True
-enable_plugin barbican https://opendev.org/openstack/barbican
-enable_plugin octavia https://opendev.org/openstack/octavia
-enable_plugin octavia-dashboard https://opendev.org/openstack/octavia-dashboard
+enable_plugin barbican https://opendev.org/openstack/barbican $OPENSTACK_VERSION
+enable_plugin octavia https://opendev.org/openstack/octavia $OPENSTACK_VERSION
+enable_plugin octavia-dashboard https://opendev.org/openstack/octavia-dashboard $OPENSTACK_VERSION
 LIBS_FROM_GIT+=python-octaviaclient
 enable_service octavia
 enable_service o-api
@@ -152,10 +155,10 @@ enable_service o-cw
 enable_service o-hm
 
 # OVN octavia provider plugin
-enable_plugin ovn-octavia-provider https://opendev.org/openstack/ovn-octavia-provider
+enable_plugin ovn-octavia-provider https://opendev.org/openstack/ovn-octavia-provider $OPENSTACK_VERSION
 
 # Magnum
-enable_plugin magnum https://opendev.org/openstack/magnum
+enable_plugin magnum https://opendev.org/openstack/magnum $OPENSTACK_VERSION
 
 [[post-config|$NOVA_CONF]]
 [scheduler]
