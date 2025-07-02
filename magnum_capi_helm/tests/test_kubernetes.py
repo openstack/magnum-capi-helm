@@ -49,14 +49,15 @@ TEST_KUBECONFIG = yaml.safe_load(TEST_KUBECONFIG_YAML)
 class TestKubernetesClient(base.TestCase):
     # Basic lookup, non "-data" key
     def test_file_or_data(self):
-        data, cleanup = kubernetes.ensure_file_cert(dict(key="mydata"), "key")
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        data = client.ensure_file_cert(dict(key="mydata"), "key")
         self.assertEqual("mydata", data)
-        self.assertFalse(cleanup)
 
     # Lookup with a "-data" key, requiring temporary file
     @mock.patch.object(tempfile, "NamedTemporaryFile")
     def test_file_or_data_create_temp(self, mock_temp):
-        data, cleanup = kubernetes.ensure_file_cert(
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        data = client.ensure_file_cert(
             {"key-data": base64.b64encode(b"mydata").decode("utf-8")}, "key"
         )
         mock_temp.assert_has_calls(
@@ -68,13 +69,12 @@ class TestKubernetesClient(base.TestCase):
             ]
         )
         self.assertEqual(mock_temp().__enter__().name, data)
-        self.assertTrue(cleanup)
 
     # Lookup with no key, expecting no error, and no data returned.
     def test_file_or_data_missing(self):
-        data, cleanup = kubernetes.ensure_file_cert(dict(), "key")
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        data = client.ensure_file_cert(dict(), "key")
         self.assertIsNone(data)
-        self.assertFalse(cleanup)
 
     def test_client_constructor(self):
         client = kubernetes.Client(TEST_KUBECONFIG)

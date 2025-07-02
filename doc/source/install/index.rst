@@ -27,6 +27,28 @@ file lives::
   [capi_helm]
   kubeconfig_file = /etc/magnum/kubeconfig
 
+.. note::
+  We currently support two authentication methods to access
+  the Cluster API management cluster:
+
+  - Certificate-Based Authentication:
+
+  This method uses a client certificate and private key
+  embedded in the kubeconfig
+  to authenticate with the Kubernetes API server.
+  It is the default method used by Cluster API when
+  generating the kubeconfig Secret for workload clusters.
+
+  - Token-Based Authentication:
+
+  A Kubernetes ServiceAccount is bound to a ClusterRole,
+  and its associated token is used to authenticate to the cluster.
+  Tokens generated via Kubernetes service accounts are long-lived and,
+  by default, do not expire unless explicitly configured with an expiration time.
+  They are thus useful where persistent and uninterrupted access to the cluster
+  is required unlike client certificate-based kubeconfigs,
+  with a one-year validity and periodic manual regeneration.
+
 Once the driver installation is complete, to create a cluster you
 first need an image that has been built to include Kubernetes.
 There are community-maintained packer build pipelines here:

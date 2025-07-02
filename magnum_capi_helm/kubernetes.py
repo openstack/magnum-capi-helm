@@ -28,32 +28,6 @@ LOG = logging.getLogger(__name__)
 CONF = conf.CONF
 
 
-def ensure_file_cert(obj, file_key):
-    """Returns the path and cleanup requirements of cert.
-
-    Returns a tuple containing the path to a file with the requesteddata,
-    and whether the file must be cleaned up.
-
-    First check if there is a file path already,
-    if the data is there, put it in a file,
-    remember for cleanup and return the created file.
-    """
-    if file_key in obj:
-        return obj[file_key], False
-
-    data_key = file_key + "-data"
-    if data_key in obj:
-        # NOTE(dalees): The created file may contain private key material
-        # but is owned by the current user and mode 0600.
-        # See also: tempfile.mkstemp
-        # In Python 3.12, cleanup may be improved with
-        # delete=True,delete_on_close=False
-        with tempfile.NamedTemporaryFile(delete=False) as fd:
-            fd.write(base64.standard_b64decode(obj[data_key]))
-        return fd.name, True
-    return None, False
-
-
 class Client(requests.Session):
     """Object for producing Kubernetes clients."""
 
@@ -65,27 +39,48 @@ class Client(requests.Session):
         cluster, user = self._get_cluster_and_user(kubeconfig)
 
         self.server = cluster["server"].rstrip("/")
-        ca_file, cleanup_file = ensure_file_cert(
-            cluster, "certificate-authority"
-        )
-        if cleanup_file and ca_file:
-            self._tempfiles.append(ca_file)
+        ca_file = self.ensure_file_cert(cluster, "certificate-authority")
         if ca_file:
             self.verify = ca_file
 
         # convert certs into files as required by requests
         # https://requests.readthedocs.io/en/latest/api/#requests.Session.cert
-        client_cert, cleanup_file = ensure_file_cert(
-            user, "client-certificate"
-        )
-        if cleanup_file and client_cert:
-            self._tempfiles.append(client_cert)
-        assert client_cert is not None
-        client_key, cleanup_file = ensure_file_cert(user, "client-key")
-        if cleanup_file and client_key:
-            self._tempfiles.append(client_key)
-        assert client_key is not None
-        self.cert = (client_cert, client_key)
+
+        client_cert = self.ensure_file_cert(user, "client-certificate")
+        client_key = self.ensure_file_cert(user, "client-key")
+
+        if client_cert and client_key:
+            self.cert = (client_cert, client_key)
+        elif user.get("token"):
+            self.headers.update({"Authorization": f"Bearer {user['token']}"})
+        else:
+            raise Exception(
+                "No supported authentication method found in kubeconfig"
+            )
+
+    def ensure_file_cert(self, obj, file_key):
+        """Returns the path of cert.
+
+        Returns a string containing the path to a file with the requesteddata.
+        First check if there is a file path already,
+        if the data is there, put it in a file, add path to the _tempfiles
+        list for cleanup and return the created file.
+        """
+        if file_key in obj:
+            return obj[file_key]
+
+        data_key = file_key + "-data"
+        if data_key in obj:
+            # NOTE(dalees): The created file may contain private key material
+            # but is owned by the current user and mode 0600.
+            # See also: tempfile.mkstemp
+            # In Python 3.12, cleanup may be improved with
+            # delete=True,delete_on_close=False
+            with tempfile.NamedTemporaryFile(delete=False) as fd:
+                fd.write(base64.standard_b64decode(obj[data_key]))
+                self._tempfiles.append(fd.name)
+            return fd.name
+        return None
 
     def __del__(self):
         # Remove any temporary certificate files this class owns.
