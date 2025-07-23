@@ -1,0 +1,6 @@
+---
+fixes:
+  - |
+    Fixes an issue where floating IP disable setting from cluster template was
+    ignored by the driver. `LP#2085339
+    <https://bugs.launchpad.net/kolla-ansible/+bug/2085339>`__
