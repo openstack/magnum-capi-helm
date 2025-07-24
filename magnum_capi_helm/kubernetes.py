@@ -155,6 +155,16 @@ class Client(requests.Session):
     def delete_all_secrets_by_label(self, label, value, namespace):
         Secret(self).delete_all_by_label(label, value, namespace)
 
+    def get_secret(self, secret_name, namespace):
+        return Secret(self).fetch(secret_name, namespace)
+
+    def get_secret_value(self, secret_name, namespace, key):
+        secret = self.get_secret(secret_name, namespace)
+        if secret:
+            encoded_value = secret["data"][key].encode()
+            decoded_value = base64.b64decode(encoded_value).decode()
+            return decoded_value
+
     def get_capi_cluster(self, name, namespace):
         return Cluster(self).fetch(name, namespace)
 

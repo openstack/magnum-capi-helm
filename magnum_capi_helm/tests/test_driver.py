@@ -592,14 +592,17 @@ class ClusterAPIDriverTest(base.DbTestCase):
 
     @mock.patch.object(app_creds, "delete_app_cred")
     @mock.patch.object(kubernetes.Client, "load")
-    def test_update_status_deleting(self, mock_load, mock_delete):
+    @mock.patch.object(driver.Driver, "_get_app_cred_id")
+    def test_update_status_deleting(self, mock_get, mock_load, mock_delete):
         mock_client = mock.MagicMock(spec=kubernetes.Client)
+        app_cred_id = "abc123"
+        mock_get.return_value = app_cred_id
         mock_load.return_value = mock_client
 
         self.driver._update_status_deleting(self.context, self.cluster_obj)
 
         self.assertEqual("DELETE_COMPLETE", self.cluster_obj.status)
-        mock_delete.assert_called_once_with(self.context, self.cluster_obj)
+        mock_delete.assert_called_once_with(self.cluster_obj, app_cred_id)
         mock_client.delete_all_secrets_by_label.assert_called_once_with(
             "magnum.openstack.org/cluster-uuid",
             self.cluster_obj.uuid,
@@ -1911,9 +1914,10 @@ class ClusterAPIDriverTest(base.DbTestCase):
             self.driver, self.context, self.cluster_obj
         )
 
+    @mock.patch.object(app_creds, "create_app_cred")
     @mock.patch.object(app_creds, "get_app_cred_string_data")
     @mock.patch.object(kubernetes.Client, "load")
-    def test_create_appcred_secret(self, mock_load, mock_sd):
+    def test_create_appcred_secret(self, mock_load, mock_sd, mock_create):
         mock_client = mock.MagicMock(spec=kubernetes.Client)
         mock_load.return_value = mock_client
         mock_sd.return_value = {"cacert": "ca", "clouds.yaml": "appcred"}
@@ -3295,3 +3299,201 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "loadBalancerProvider": "amphora",
         }
         self.assertEqual(apiserver_expected, helm_install_values["apiServer"])
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        app_cred_id_old = "abcde12345"
+        app_cred_id_new = "edcba54321"
+
+        mock_app_cred = mock.MagicMock()
+        mock_app_cred.id = app_cred_id_new
+
+        mock_get.return_value = app_cred_id_old
+        mock_create.return_value = mock_app_cred
+
+        self.driver.rotate_credential(self.context, self.cluster_obj)
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_not_called()  # user_id unchanged
+        mock_delete.assert_called_once_with(self.cluster_obj, app_cred_id_old)
+
+        self.assertEqual(self.context.user_id, self.cluster_obj.user_id)
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_COMPLETE, self.cluster_obj.status
+        )
+        self.assertIsNone(self.cluster_obj.status_reason)
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential_new_user(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        self.cluster_obj.user_id = "user_a"
+        self.context.user_id = "user_b"
+
+        app_cred_id_old = "abcde12345"
+        app_cred_id_new = "edcba54321"
+
+        mock_app_cred = mock.MagicMock()
+        mock_app_cred.id = app_cred_id_new
+
+        mock_get.return_value = app_cred_id_old
+        mock_create.return_value = mock_app_cred
+
+        self.driver.rotate_credential(self.context, self.cluster_obj)
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_delete.assert_called_once_with(self.cluster_obj, app_cred_id_old)
+
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_COMPLETE, self.cluster_obj.status
+        )
+        self.assertIsNone(self.cluster_obj.status_reason)
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential_delete_failed(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        app_cred_id = "abcde12345"
+
+        mock_app_cred = mock.MagicMock()
+        mock_app_cred.id = app_cred_id
+
+        mock_get.return_value = None
+        mock_create.return_value = mock_app_cred
+
+        self.driver.rotate_credential(self.context, self.cluster_obj)
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_not_called()  # user_id unchanged
+        mock_delete.assert_not_called()
+
+        # Failure to delete the old app cred is not a error condition
+        self.assertEqual(self.context.user_id, self.cluster_obj.user_id)
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_COMPLETE, self.cluster_obj.status
+        )
+        self.assertIsNone(self.cluster_obj.status_reason)
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential_create_failed(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        mock_create.side_effect = exception.AuthorizationFailure
+
+        self.assertRaises(
+            exception.MagnumException,
+            self.driver.rotate_credential,
+            self.context,
+            self.cluster_obj,
+        )
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_not_called()
+        mock_delete.assert_not_called()
+
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_FAILED, self.cluster_obj.status
+        )
+        self.assertIsNotNone(self.cluster_obj.status_reason)
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential_is_none(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        mock_create.return_value = None
+
+        self.assertRaises(
+            exception.MagnumException,
+            self.driver.rotate_credential,
+            self.context,
+            self.cluster_obj,
+        )
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_not_called()
+        mock_delete.assert_not_called()
+
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_FAILED, self.cluster_obj.status
+        )
+        self.assertIsNotNone(self.cluster_obj.status_reason)
+
+    @mock.patch.object(app_creds, "delete_app_cred", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_app_cred_id", autospec=True)
+    def test_rotate_credential_unchanged(
+        self, mock_get, mock_create, mock_certs, mock_delete
+    ):
+        mock_app_cred_id = "abcde12355"
+        mock_app_cred = mock.MagicMock()
+        mock_app_cred.id = mock_app_cred_id
+
+        mock_get.return_value = mock_app_cred_id
+        mock_create.return_value = mock_app_cred
+
+        self.assertRaises(
+            exception.MagnumException,
+            self.driver.rotate_credential,
+            self.context,
+            self.cluster_obj,
+        )
+
+        mock_get.assert_called_once_with(self.driver, self.cluster_obj)
+        mock_create.assert_called_once_with(
+            self.driver, self.context, self.cluster_obj
+        )
+        mock_certs.assert_not_called()
+        mock_delete.assert_not_called()
+
+        self.assertEqual(
+            fields.ClusterStatus.UPDATE_FAILED, self.cluster_obj.status
+        )
+        self.assertIsNotNone(self.cluster_obj.status_reason)

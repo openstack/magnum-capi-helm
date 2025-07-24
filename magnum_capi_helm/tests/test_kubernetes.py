@@ -212,6 +212,52 @@ class TestKubernetesClient(base.TestCase):
         mock_response.raise_for_status.assert_called_once_with()
 
     @mock.patch.object(requests.Session, "request")
+    def test_get_secret(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_request.return_value = mock_response
+
+        secret_name = "secret1"
+        secret_namespace = "ns1"
+        client.get_secret(secret_name, secret_namespace)
+
+        mock_request.assert_called_once_with(
+            "GET",
+            "https://test:6443/api/v1/namespaces"
+            f"/{secret_namespace}/secrets/{secret_name}",
+            allow_redirects=True,
+        )
+
+    @mock.patch.object(requests.Session, "request")
+    def test_get_secret_value(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_request.return_value = mock_response
+
+        secret_name = "secret1"
+        secret_namespace = "ns1"
+        secret_key = "mykey"
+        secret_value = "mysecretvalue"
+        mock_response.json.return_value = {
+            "data": {
+                secret_key: base64.b64encode(secret_value.encode()).decode(),
+            }
+        }
+
+        self.assertEqual(
+            client.get_secret_value(secret_name, secret_namespace, secret_key),
+            secret_value,
+        )
+        mock_request.assert_called_once_with(
+            "GET",
+            "https://test:6443/api/v1/namespaces"
+            f"/{secret_namespace}/secrets/{secret_name}",
+            allow_redirects=True,
+        )
+
+    @mock.patch.object(requests.Session, "request")
     def test_get_capi_cluster_found(self, mock_request):
         client = kubernetes.Client(TEST_KUBECONFIG)
         mock_response = mock.MagicMock()
