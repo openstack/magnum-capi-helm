@@ -82,7 +82,7 @@ class Driver(driver.Driver):
     def _update_control_plane_nodegroup_status(self, cluster, nodegroup):
         # The status of the master nodegroup is determined by the Cluster API
         # control plane object
-        kcp = self._k8s_client.get_kubeadm_control_plane(
+        kcp = self._k8s_client.get_k8s_control_plane(
             driver_utils.get_k8s_resource_name(cluster, "control-plane"),
             driver_utils.cluster_namespace(cluster),
         )
@@ -108,12 +108,7 @@ class Driver(driver.Driver):
         }
         kcp_ready = all(
             cond in kcp_true_conditions
-            for cond in (
-                "MachinesReady",
-                "Ready",
-                "EtcdClusterHealthy",
-                "ControlPlaneComponentsHealthy",
-            )
+            for cond in CONF.capi_helm.k8s_control_plane_resource_conditions
         )
         target_replicas = kcp_spec.get("replicas")
         current_replicas = kcp_status.get("replicas")

@@ -156,7 +156,7 @@ class CAPIMonitor(monitors.MonitorBase):
         resource_name = driver_utils.get_k8s_resource_name(
             self.cluster, "control-plane"
         )
-        resource_kcp = self._k8s_client.get_kubeadm_control_plane(
+        resource_kcp = self._k8s_client.get_k8s_control_plane(
             resource_name, namespace
         )
         if not resource_kcp:

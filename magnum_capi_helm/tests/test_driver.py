@@ -413,13 +413,13 @@ class ClusterAPIDriverTest(base.DbTestCase):
         mock_load.return_value = mock_client
         nodegroup = mock.MagicMock()
         nodegroup.name = "masters"
-        mock_client.get_kubeadm_control_plane.return_value = None
+        mock_client.get_k8s_control_plane.return_value = None
 
         self.driver._update_control_plane_nodegroup_status(
             self.cluster_obj, nodegroup
         )
 
-        mock_client.get_kubeadm_control_plane.assert_called_once_with(
+        mock_client.get_k8s_control_plane.assert_called_once_with(
             "cluster-example-a-111111111111-control-plane",
             "magnum-fakeproject",
         )
@@ -455,13 +455,13 @@ class ClusterAPIDriverTest(base.DbTestCase):
                 "readyReplicas": 3,
             },
         }
-        mock_client.get_kubeadm_control_plane.return_value = kcp
+        mock_client.get_k8s_control_plane.return_value = kcp
 
         self.driver._update_control_plane_nodegroup_status(
             self.cluster_obj, nodegroup
         )
 
-        mock_client.get_kubeadm_control_plane.assert_called_once_with(
+        mock_client.get_k8s_control_plane.assert_called_once_with(
             "cluster-example-a-111111111111-control-plane",
             "magnum-fakeproject",
         )
@@ -497,13 +497,13 @@ class ClusterAPIDriverTest(base.DbTestCase):
                 "readyReplicas": 2,
             },
         }
-        mock_client.get_kubeadm_control_plane.return_value = kcp
+        mock_client.get_k8s_control_plane.return_value = kcp
 
         self.driver._update_control_plane_nodegroup_status(
             self.cluster_obj, nodegroup
         )
 
-        mock_client.get_kubeadm_control_plane.assert_called_once_with(
+        mock_client.get_k8s_control_plane.assert_called_once_with(
             "cluster-example-a-111111111111-control-plane",
             "magnum-fakeproject",
         )
@@ -539,13 +539,13 @@ class ClusterAPIDriverTest(base.DbTestCase):
                 "readyReplicas": 3,
             },
         }
-        mock_client.get_kubeadm_control_plane.return_value = kcp
+        mock_client.get_k8s_control_plane.return_value = kcp
 
         self.driver._update_control_plane_nodegroup_status(
             self.cluster_obj, nodegroup
         )
 
-        mock_client.get_kubeadm_control_plane.assert_called_once_with(
+        mock_client.get_k8s_control_plane.assert_called_once_with(
             "cluster-example-a-111111111111-control-plane",
             "magnum-fakeproject",
         )

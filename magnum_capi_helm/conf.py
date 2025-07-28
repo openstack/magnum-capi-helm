@@ -130,6 +130,40 @@ capi_helm_opts = [
             "generated application credentials."
         ),
     ),
+    cfg.StrOpt(
+        "api_resources",
+        default={},
+        help=(
+            """
+            Dictionary of cluster api resources to modify
+            api_version and plural names in string format.
+
+            "Example:"
+            '{
+                "K8sControlPlane": {
+                    "api_version": "controlplane.cluster.x-k8s.io/v1beta1",
+                    "plural_name": "kubeadmcontrolplanes"
+                },
+                "OpenstackCluster": {
+                    "api_version": "infrastructure.cluster.x-k8s.io/v1beta1",
+                },
+            }'
+            """
+        ),
+    ),
+    cfg.ListOpt(
+        "k8s_control_plane_resource_conditions",
+        default=[
+            "MachinesReady",
+            "Ready",
+            "EtcdClusterHealthy",
+            "ControlPlaneComponentsHealthy",
+        ],
+        help=(
+            "List of conditions to check for kubernetes control plane "
+            "resource to consider as ready."
+        ),
+    ),
 ]
 
 CONF = cfg.CONF

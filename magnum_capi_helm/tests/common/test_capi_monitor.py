@@ -55,7 +55,7 @@ class TestCAPIMonitor(base.DbTestCase):
                 "ready": True,
             }
         }
-        self.mock_k8s.get_kubeadm_control_plane.return_value = copy.deepcopy(
+        self.mock_k8s.get_k8s_control_plane.return_value = copy.deepcopy(
             ready_state
         )
         self.mock_k8s.get_machine_deployment.return_value = copy.deepcopy(
@@ -193,7 +193,7 @@ class TestCAPIMonitor(base.DbTestCase):
                 ]
             }
         }
-        self.mock_k8s.get_kubeadm_control_plane.return_value = cp_state
+        self.mock_k8s.get_k8s_control_plane.return_value = cp_state
         self.monitor.poll_health_status()
 
         self.assertEqual(
@@ -264,7 +264,7 @@ class TestCAPIMonitor(base.DbTestCase):
     def test_all_missing(self):
         self.mock_k8s.get_capi_cluster.return_value = None
         self.mock_k8s.get_capi_openstackcluster.return_value = None
-        self.mock_k8s.get_kubeadm_control_plane.return_value = None
+        self.mock_k8s.get_k8s_control_plane.return_value = None
         self.mock_k8s.get_machine_deployment.return_value = None
         self.monitor.poll_health_status()
 

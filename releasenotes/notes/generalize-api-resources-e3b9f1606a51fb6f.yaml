@@ -1,0 +1,10 @@
+---
+features:
+  - |
+    Adds new configuration parameters to update api_version and plural names
+    of k8s resources related to Cluster API. To be specific, the resources
+    are Cluster, OpenstackCluster, MachineDeployment, K8sControlPlane,
+    Machine, Manifests, HelmRelease.
+
+    Adds new configuration parameter to specify list of conditions to check
+    in kubernetes control plane resource to consider resource as ready.

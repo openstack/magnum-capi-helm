@@ -301,14 +301,14 @@ class TestKubernetesClient(base.TestCase):
         )
 
     @mock.patch.object(requests.Session, "request")
-    def test_get_kubeadm_control_plane_found(self, mock_request):
+    def test_get_k8s_control_plane_found(self, mock_request):
         client = kubernetes.Client(TEST_KUBECONFIG)
         mock_response = mock.MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = "mock_json"
         mock_request.return_value = mock_response
 
-        cluster = client.get_kubeadm_control_plane("name", "ns1")
+        cluster = client.get_k8s_control_plane("name", "ns1")
 
         mock_request.assert_called_once_with(
             "GET",
