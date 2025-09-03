@@ -1,0 +1,14 @@
+---
+features:
+  - |
+    Add support for new resource HelmChartProxy.
+
+    Users can manage addons on workload clusters as
+    part of magnum cluster operations by defining
+    HelmChartProxy resources in their CAPI helm chart [1].
+
+    Sample examples on how to define HelmChartProxy
+    resources are available in link [2].
+
+    [1] https://github.com/kubernetes-sigs/cluster-api-addon-provider-helm
+    [2] https://github.com/kubernetes-sigs/cluster-api-addon-provider-helm/tree/9d44995329945a318abd6b2ffd7bca7b526401a9/config/samples

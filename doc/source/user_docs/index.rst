@@ -91,7 +91,7 @@ highlights these various components and their relationships:
 
        - A representation of the OpenStack cloud resources required by a single workload cluster. The `cluster-api-provider-openstack <https://github.com/kubernetes-sigs/cluster-api-provider-openstack>`_ (``capo-controller-manager`` in the above diagram) is responsible for reconciling the state of these resources using OpenStack API calls. The ``cluster-api-janitor`` also watches these CRDs to clean up any OpenStack resources left behind upon deletion of the workload cluster.
 
-   * **{helmrelease, manifests}.addons.stackhpc.com**
+   * **{helmrelease, manifests}.addons.stackhpc.com** & **helmchartproxy.addons.cluster.x-k8s.io**
 
        - A representation of a `Helm <https://helm.sh>`_ release or plain Kubernetes manifest to be installed on a workload cluster. Installation and subsequent reconciliation are carried out by the `cluster-api-addon-provider <https://github.com/azimuth-cloud/cluster-api-addon-provider>`_.
 
