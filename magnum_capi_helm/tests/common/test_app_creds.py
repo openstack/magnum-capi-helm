@@ -84,7 +84,7 @@ class TestAppCreds(base.DbTestCase):
         }
         self.assertEqual(expected, app_cred_string_data)
         mock_client().url_for.assert_called_once_with(
-            service_type="identity", interface="public"
+            service_type="identity", interface="public", region_name="cinder"
         )
         mock_app_cred.create.assert_called_once_with(
             user=context.user_id,
@@ -189,3 +189,52 @@ clouds:
             f"magnum-{self.cluster_obj.uuid}"
         )
         mock_app_cred_client.get.assert_called_once_with(app_cred_id)
+
+
+@mock.patch.object(clients, "OpenStackClients")
+def test_get_app_cred_clouds_dict_multi_region(self, mock_clients):
+    # Arrange
+    mock_osc = mock.Mock()
+    mock_clients.return_value = mock_osc
+
+    # Fake application credential
+    app_cred = collections.namedtuple("AppCred", ["id", "secret"])(
+        "id123", "secret456"
+    )
+
+    # Case 1: CONF.magnum_client.region_name is set
+    with mock.patch("magnum_capi_helm.common.app_creds.CONF") as mock_conf:
+        mock_conf.magnum_client.region_name = "region_from_conf"
+        mock_conf.capi_helm.app_cred_interface_type = "public"
+        mock_conf.drivers.verify_ca = True
+
+        result = app_creds._get_app_cred_clouds_dict("context", app_cred)
+
+        # Assert
+        self.assertEqual(
+            result["clouds"]["openstack"]["region_name"], "region_from_conf"
+        )
+        mock_osc.url_for.assert_called_once_with(
+            service_type="identity",
+            interface="public",
+            region_name="region_from_conf",
+        )
+
+    # Case 2: CONF.magnum_client.region_name is None → fallback to osc.cinder_region_name()
+    mock_osc.reset_mock()
+    mock_osc.cinder_region_name.return_value = "region_from_osc"
+    with mock.patch("magnum_capi_helm.common.app_creds.CONF") as mock_conf:
+        mock_conf.magnum_client.region_name = None
+        mock_conf.capi_helm.app_cred_interface_type = "public"
+        mock_conf.drivers.verify_ca = True
+
+        result = app_creds._get_app_cred_clouds_dict("context", app_cred)
+
+        self.assertEqual(
+            result["clouds"]["openstack"]["region_name"], "region_from_osc"
+        )
+        mock_osc.url_for.assert_called_once_with(
+            service_type="identity",
+            interface="public",
+            region_name="region_from_osc",
+        )
