@@ -74,18 +74,20 @@ def create_app_cred(context, cluster):
 
 def _get_app_cred_clouds_dict(context, app_cred):
     osc = clients.OpenStackClients(context)
+    # ensure correct region_name for multi-region Keystone
+    region_name = CONF.magnum_client.region_name or osc.cinder_region_name()
     return {
         "clouds": {
             "openstack": {
                 "identity_api_version": 3,
-                "region_name": osc.cinder_region_name(),
+                "region_name": region_name,
                 "interface": CONF.capi_helm.app_cred_interface_type,
                 # This config item indicates whether TLS should be
                 # verified when connecting to the OpenStack API
                 "verify": CONF.drivers.verify_ca,
                 "auth": {
                     "auth_url": osc.url_for(
-                        service_type="identity", interface="public"
+                        service_type="identity", interface="public", region_name=region_name
                     ),
                     "application_credential_id": app_cred.id,
                     "application_credential_secret": app_cred.secret,
