@@ -1,0 +1,11 @@
+---
+upgrade:
+  - |
+    csi_cinder_volume_binding_mode previously had no effect. If you use
+    capi-helm-charts<0.8.0 then you would have set it to Immediate and since
+    0.8.0 it has defaulted to WaitForFirstConsumer. The configuration is now
+    being used, and we have set the default to match the new versions of the
+    capi-helm-charts. However, if you have older clusters using a template
+    with a very old capi-helm-chart, then really you need to keep the older
+    default, to avoid a breakage on upgrade. This is specifically because
+    the storage class, once created, is immutable.

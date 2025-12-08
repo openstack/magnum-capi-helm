@@ -771,6 +771,13 @@ class Driver(driver.Driver):
             CONF.capi_helm.csi_cinder_reclaim_policy,
         )
 
+    def _get_csi_cinder_volume_binding_mode(self, cluster):
+        return self._label(
+            cluster,
+            "csi_cinder_volume_binding_mode",
+            CONF.capi_helm.csi_cinder_volume_binding_mode,
+        )
+
     def _get_csi_cinder_fstype(self, cluster):
         return self._label(
             cluster,
@@ -836,6 +843,7 @@ class Driver(driver.Driver):
         additional_storage_classes = []
         allow_expansion = self._get_csi_cinder_allow_volume_expansion(cluster)
         reclaim_policy = self._get_csi_cinder_reclaim_policy(cluster)
+        binding_mode = self._get_csi_cinder_volume_binding_mode(cluster)
         allowed_topologies = CONF.capi_helm.csi_cinder_allowed_topologies
         fstype = self._get_csi_cinder_fstype(cluster)
 
@@ -844,6 +852,7 @@ class Driver(driver.Driver):
                 "name": driver_utils.sanitized_name(volume_type),
                 "reclaimPolicy": reclaim_policy,
                 "allowVolumeExpansion": allow_expansion,
+                "volumeBindingMode": binding_mode,
                 "availabilityZone": availability_zone,
                 "volumeType": volume_type,
                 "allowedTopologies": allowed_topologies,

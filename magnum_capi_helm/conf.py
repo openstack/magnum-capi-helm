@@ -111,7 +111,8 @@ capi_helm_opts = [
     ),
     cfg.StrOpt(
         "csi_cinder_volume_binding_mode",
-        default="Immediate",
+        default="WaitForFirstConsumer",
+        choices=["WaitForFirstConsumer", "Immediate"],
         help=(
             "The volumeBindingMode field controls when "
             "volume binding and dynamic provisioning should occur."
