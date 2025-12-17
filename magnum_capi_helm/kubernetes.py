@@ -215,6 +215,18 @@ class Client(requests.Session):
     def get_all_machines_by_label(self, labels, namespace):
         return list(Machine(self).fetch_all_by_label(labels, namespace))
 
+    def apply_lease(self, lease_name, data, namespace):
+        return Lease(self).apply(lease_name, data, namespace)
+
+    def create_lease(self, lease_name, data, namespace):
+        return Lease(self).create(lease_name, data, namespace)
+
+    def get_lease(self, name, namespace):
+        return Lease(self).fetch(name, namespace)
+
+    def delete_lease(self, name, namespace, resource_version=None):
+        Lease(self).delete(name, namespace, resource_version=resource_version)
+
 
 class Resource:
     def __init__(self, client):
@@ -292,6 +304,49 @@ class Resource:
         response.raise_for_status()
         return response.json()
 
+    def create(self, name, data=None, namespace=None):
+        """Creates the given object in the target Kubernetes cluster.
+
+        Unlike apply() (a force-owned upsert that never conflicts), this
+        fails with an HTTPError (409 Conflict, reason AlreadyExists) if an
+        object with this name already exists, giving atomic
+        create-if-absent semantics.
+        """
+        assert self.namespaced == bool(namespace)
+        body_data = copy.deepcopy(data) if data else {}
+        body_data["apiVersion"] = self.api_version
+        body_data["kind"] = self.kind
+        body_data.setdefault("metadata", {})["name"] = name
+        if namespace:
+            body_data["metadata"]["namespace"] = namespace
+        response = self.client.post(
+            self.prepare_path(namespace=namespace),
+            json=body_data,
+        )
+        response.raise_for_status()
+        return response.json()
+
+    def delete(self, name, namespace, resource_version=None):
+        """Deletes the given object from the target Kubernetes cluster.
+
+        If resource_version is given, the delete is conditional: the API
+        server rejects it with a 409 Conflict if the object has changed
+        since resource_version was read (e.g. it was updated or recreated
+        by someone else), instead of deleting whatever currently exists
+        under that name.
+        """
+        assert self.namespaced == bool(namespace)
+        kwargs = {}
+        if resource_version is not None:
+            kwargs["json"] = {
+                "preconditions": {"resourceVersion": resource_version}
+            }
+        response = self.client.delete(
+            self.prepare_path(name, namespace),
+            **kwargs,
+        )
+        response.raise_for_status()
+
     def delete_all_by_label(self, label, value, namespace=None):
         """Deletes all objects with the specified label from cluster."""
         assert self.namespaced == bool(namespace)
@@ -309,6 +364,10 @@ class Namespace(Resource):
 
 class Secret(Resource):
     api_version = "v1"
+
+
+class Lease(Resource):
+    api_version = "coordination.k8s.io/v1"
 
 
 class Cluster(Resource):

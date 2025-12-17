@@ -15,6 +15,7 @@
 import re
 
 from magnum_capi_helm import conf
+from magnum_capi_helm import helm
 
 CONF = conf.CONF
 
@@ -43,3 +44,26 @@ def chart_release_name(cluster):
 
 def get_k8s_resource_name(cluster, name):
     return sanitized_name(chart_release_name(cluster), name)
+
+
+def helm_lock_lease_name(cluster):
+    return helm.lease_name_for_release(chart_release_name(cluster))
+
+
+def is_helm_locked(k8s_client, cluster):
+    """Returns True if a HelmLock is currently held for cluster's release.
+
+    Used by status/health checks to avoid trusting the current state of
+    a cluster's CAPI resources while a Helm update for that cluster is
+    still being applied (i.e. is waiting for, or holding, the lock) -
+    that state may reflect an older, already-converged spec rather than
+    whatever is currently being applied.
+    """
+    release_name = chart_release_name(cluster)
+    if not release_name:
+        return False
+    return helm.is_release_locked(
+        k8s_client,
+        helm_lock_lease_name(cluster),
+        cluster_namespace(cluster),
+    )

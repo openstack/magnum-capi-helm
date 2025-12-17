@@ -11,6 +11,7 @@
 #    under the License.
 
 import copy
+import datetime
 
 from unittest import mock
 
@@ -61,6 +62,7 @@ class TestCAPIMonitor(base.DbTestCase):
         self.mock_k8s.get_machine_deployment.return_value = copy.deepcopy(
             ready_state
         )
+        self.mock_k8s.get_lease.return_value = None
 
     def tearDown(self):
         super(TestCAPIMonitor, self).tearDown()
@@ -281,3 +283,21 @@ class TestCAPIMonitor(base.DbTestCase):
                 "nodegroup": "test-worker resource not found.",
             },
         )
+
+    def test_health_status_skipped_while_helm_locked(self):
+        # A Helm update for this cluster is still waiting for, or
+        # holding, the lock - the CAPI resources set up in setUp() may
+        # not reflect whatever is currently being applied, so
+        # health_status must not be touched this cycle.
+        now = datetime.datetime.now(tz=datetime.timezone.utc)
+        self.mock_k8s.get_lease.return_value = {
+            "spec": {
+                "renewTime": now.strftime("%Y-%m-%dT%H:%M:%S.%fZ"),
+                "leaseDurationSeconds": 300,
+            }
+        }
+
+        self.monitor.poll_health_status()
+
+        self.assertNotIn("health_status", self.monitor.data)
+        self.assertNotIn("health_status_reason", self.monitor.data)

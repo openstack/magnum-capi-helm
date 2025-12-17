@@ -345,12 +345,14 @@ class Driver(driver.Driver):
         # Fetch the current app cred ID before we delete all secrets
         app_cred_id = self._get_app_cred_id(cluster)
 
+        namespace = driver_utils.cluster_namespace(cluster)
+
         # Once the Cluster API cluster is gone, we need to clean up
         # the secrets we created
         self._k8s_client.delete_all_secrets_by_label(
             "magnum.openstack.org/cluster-uuid",
             cluster.uuid,
-            driver_utils.cluster_namespace(cluster),
+            namespace,
         )
 
         cluster.status_reason = None
@@ -370,6 +372,22 @@ class Driver(driver.Driver):
                 )
                 cluster.status_reason = error_msg
                 LOG.warning(error_msg)
+
+        # The Helm lock's lease is normally cleaned up when its holding
+        # HelmLock releases it, but clean up here too in case one was
+        # left behind (e.g. a conductor crashing mid-operation), so
+        # leases don't accumulate in this (per-project) namespace. Skip
+        # this if the lease is still actively held - it may belong to a
+        # genuinely in-flight Helm operation for this cluster, and
+        # deleting it would let a second operation acquire the lock
+        # concurrently. Any such lease still self-heals via its own TTL.
+        lease_name = driver_utils.helm_lock_lease_name(cluster)
+        if not helm.is_release_locked(self._k8s_client, lease_name, namespace):
+            try:
+                self._k8s_client.delete_lease(lease_name, namespace)
+            except requests.exceptions.HTTPError as exc:
+                if exc.response.status_code != 404:
+                    raise
 
         cluster.status = fields.ClusterStatus.DELETE_COMPLETE
         cluster.save()
@@ -413,6 +431,18 @@ class Driver(driver.Driver):
         # states to COMPLETE
 
         # TODO(mkjpryor) Add a timeout for create/update/delete
+
+        if driver_utils.is_helm_locked(self._k8s_client, cluster):
+            # A Helm update for this cluster is still waiting for, or
+            # holding, the lock - the CAPI resources may not yet reflect
+            # whatever is currently being applied, so don't trust their
+            # state for status purposes this cycle.
+            LOG.debug(
+                "Helm lock currently held for %s; skipping status "
+                "update until it is released",
+                cluster.uuid,
+            )
+            return
 
         capi_cluster = self._get_capi_cluster(cluster)
 
@@ -1124,242 +1154,284 @@ class Driver(driver.Driver):
                 nodegroup_set.append(nodegroup_item)
         return nodegroup_set
 
-    def _update_helm_release(self, context, cluster, nodegroups=None):
+    # Nodegroups in any of these statuses are already gone, or on their
+    # way out, and must never be included in the Helm values.
+    _NODEGROUP_SKIP_STATUSES = (
+        fields.ClusterStatus.DELETE_IN_PROGRESS,
+        fields.ClusterStatus.DELETE_FAILED,
+        fields.ClusterStatus.DELETE_COMPLETE,
+    )
+
+    def _update_helm_release(
+        self, context, cluster, exclude_nodegroup_name=None
+    ):
         lconf = CONF.capi_helm_cluster_labels
-        if nodegroups is None:
-            nodegroups = cluster.nodegroups
 
-        image_id, kube_version, os_distro = self._get_image_details(
-            context, cluster.cluster_template.image_id
-        )
+        release_name = driver_utils.chart_release_name(cluster)
+        namespace = driver_utils.cluster_namespace(cluster)
+        with helm.HelmLock(release_name, namespace) as lock:
+            # NOTE(scott): We refresh the cluster here to avoid missing
+            # any updates to the DB which occurred while we waiting for
+            # the lock
+            cluster.refresh()
 
-        network_id = self._get_fixed_network_id(context, cluster)
-        subnet_id = neutron.get_fixed_subnet_id(context, cluster.fixed_subnet)
+            nodegroups = [
+                ng
+                for ng in cluster.nodegroups
+                if ng.name != exclude_nodegroup_name
+                and ng.status not in self._NODEGROUP_SKIP_STATUSES
+            ]
 
-        values = {
-            "kubernetesVersion": kube_version,
-            "machineImageId": image_id,
-            "machineSSHKeyName": cluster.keypair or None,
-            "cloudCredentialsSecretName": self._get_app_cred_secret_name(
-                cluster
-            ),
-            "etcd": self._get_etcd_config(cluster),
-            "apiServer": {
-                "associateFloatingIP": self._get_label_bool(
-                    cluster,
-                    "master_lb_floating_ip_enabled",
-                    lconf.master_lb_floating_ip_enabled,
-                ),
-                # Disabling load balancers is not supported
-                # Please have a look at:
-                # https://docs.openstack.org/magnum-capi-helm/latest/configuration/index.html#tip-tricks
-                "enableLoadBalancer": True,
-                "loadBalancerProvider": self._get_octavia_provider(cluster),
-            },
-            "clusterNetworking": {
-                "dnsNameservers": self._get_dns_nameservers(cluster),
-                "externalNetworkId": neutron.get_external_network_id(
-                    context, cluster.cluster_template.external_network_id
-                ),
-                "internalNetwork": {
-                    "networkFilter": (
-                        {"id": network_id} if network_id else None
-                    ),
-                    "subnetFilter": ({"id": subnet_id} if subnet_id else None),
-                    # This is only used if a fixed network is not specified
-                    "nodeCidr": self._label(
-                        cluster,
-                        "fixed_subnet_cidr",
-                        lconf.fixed_subnet_cidr,
-                    ),
-                },
-            },
-            "kubeNetwork": {
-                "pods": {
-                    "cidrBlocks": [
-                        self._label(
-                            cluster, "pod_network_cidr", "10.100.0.0/16"
-                        )
-                    ]
-                },
-                "services": {
-                    "cidrBlocks": [
-                        self._label(
-                            cluster, "service_network_cidr", "172.24.0.0/13"
-                        )
-                    ]
-                },
-            },
-            "osDistro": os_distro,
-            "controlPlane": {
-                "machineFlavor": cluster.master_flavor_id,
-                "machineCount": cluster.master_count,
-                "healthCheck": {
-                    "enabled": self._get_autoheal_enabled(cluster),
-                },
-            },
-            "nodeGroupDefaults": {
-                "healthCheck": {
-                    "enabled": self._get_autoheal_enabled(cluster),
-                },
-            },
-            "nodeGroups": self._process_node_groups(cluster, nodegroups),
-            "addons": {
-                "openstack": {
-                    "csiCinder": self._storageclass_definitions(
-                        context, cluster
-                    ),
-                    "cloudConfig": {
-                        "LoadBalancer": {
-                            "lb-provider": self._get_octavia_provider(cluster),
-                            "lb-method": self._get_octavia_lb_algorithm(
-                                cluster
-                            ),
-                            "create-monitor": self._get_label_bool(
-                                cluster,
-                                "octavia_lb_healthcheck",
-                                lconf.octavia_lb_healthcheck,
-                            ),
-                        }
-                    },
-                },
-                "monitoring": {
-                    "enabled": self._get_monitoring_enabled(cluster)
-                },
-                "kubernetesDashboard": {
-                    "enabled": self._get_kube_dash_enabled(cluster)
-                },
-                # TODO(mkjpryor): can't enable ingress until code exists to
-                #                 remove the load balancer
-                "ingress": {"enabled": False},
-            },
-        }
-
-        # Add boot disk details, if defined in config file.
-        # Helm chart defaults to ephemeral disks, if unset.
-        boot_volume_type = self._label(
-            cluster,
-            "boot_volume_type",
-            lconf.boot_volume_type or CONF.cinder.default_boot_volume_type,
-        )
-        if boot_volume_type:
-            disk_type_details = {
-                "controlPlane": {
-                    "machineRootVolume": {
-                        "volumeType": boot_volume_type,
-                    }
-                },
-                "nodeGroupDefaults": {
-                    "machineRootVolume": {
-                        "volumeType": boot_volume_type,
-                    }
-                },
-            }
-            values = helm.mergeconcat(values, disk_type_details)
-
-        conf_boot_size = lconf.boot_volume_size
-        boot_volume_size_gb = self._get_label_int(
-            cluster,
-            "boot_volume_size",
-            (
-                conf_boot_size
-                if conf_boot_size is not None
-                else CONF.cinder.default_boot_volume_size
-            ),
-        )
-        if boot_volume_size_gb:
-            disk_size_details = {
-                "controlPlane": {
-                    "machineRootVolume": {
-                        "diskSize": boot_volume_size_gb,
-                    }
-                },
-                "nodeGroupDefaults": {
-                    "machineRootVolume": {
-                        "diskSize": boot_volume_size_gb,
-                    }
-                },
-            }
-            values = helm.mergeconcat(values, disk_size_details)
-
-        # Sometimes you need to add an extra network
-        # for things like Cinder CSI CephFS Native
-        # NOTE(mattcrees): extra_network_name is deprecated, so
-        # extra_network_names takes precedence if both are set.
-        # extra_network_name should be removed in a future release.
-        extra_network_name = self._label(
-            cluster,
-            "extra_network_name",
-            "",
-        )
-        extra_network_names = self._label(
-            cluster,
-            "extra_network_names",
-            lconf.extra_network_names,
-        )
-        if extra_network_name and not extra_network_names:
-            extra_network_names = extra_network_name
-        if extra_network_names:
-            ports = [{}]
-            for network in extra_network_names.split(" "):
-                ports.append(
-                    {
-                        "network": {
-                            "name": network,
-                        },
-                        "securityGroups": [],
-                    }
-                )
-            network_details = {
-                "nodeGroupDefaults": {
-                    "machineNetworking": {
-                        "ports": ports,
-                    },
-                },
-            }
-            values = helm.mergeconcat(values, network_details)
-
-        if self._get_k8s_keystone_auth_enabled(cluster):
-            k8s_keystone_auth_config = {
-                "authWebhook": "k8s-keystone-auth",
-                "addons": {
-                    "openstack": {
-                        "k8sKeystoneAuth": {  # addon subchart configuration
-                            "enabled": True,
-                            "values": {
-                                "openstackAuthUrl": context.auth_url,
-                                "projectId": context.project_id,
-                            },
-                        }
-                    }
-                },
-            }
-            values = helm.mergeconcat(values, k8s_keystone_auth_config)
-            LOG.debug(
-                "Enable K8s keystone auth webhook for"
-                f" project: {context.project_id} auth url: {context.auth_url}"
+            image_id, kube_version, os_distro = self._get_image_details(
+                context, cluster.cluster_template.image_id
             )
 
-        api_lb_allowed_cidrs = self._get_allowed_cidrs(cluster)
-        if isinstance(api_lb_allowed_cidrs, list):
-            allowed_cidrs_config = {
-                "apiServer": {"allowedCidrs": api_lb_allowed_cidrs}
+            network_id = self._get_fixed_network_id(context, cluster)
+            subnet_id = neutron.get_fixed_subnet_id(
+                context, cluster.fixed_subnet
+            )
+
+            values = {
+                "kubernetesVersion": kube_version,
+                "machineImageId": image_id,
+                "machineSSHKeyName": cluster.keypair or None,
+                "cloudCredentialsSecretName": self._get_app_cred_secret_name(
+                    cluster
+                ),
+                "etcd": self._get_etcd_config(cluster),
+                "apiServer": {
+                    "associateFloatingIP": self._get_label_bool(
+                        cluster,
+                        "master_lb_floating_ip_enabled",
+                        lconf.master_lb_floating_ip_enabled,
+                    ),
+                    # Disabling load balancers is not supported
+                    # Please have a look at:
+                    # https://docs.openstack.org/magnum-capi-helm/latest/configuration/index.html#tip-tricks
+                    "enableLoadBalancer": True,
+                    "loadBalancerProvider": self._get_octavia_provider(
+                        cluster
+                    ),
+                },
+                "clusterNetworking": {
+                    "dnsNameservers": self._get_dns_nameservers(cluster),
+                    "externalNetworkId": neutron.get_external_network_id(
+                        context, cluster.cluster_template.external_network_id
+                    ),
+                    "internalNetwork": {
+                        "networkFilter": (
+                            {"id": network_id} if network_id else None
+                        ),
+                        "subnetFilter": (
+                            {"id": subnet_id} if subnet_id else None
+                        ),
+                        # This is only used if a fixed network is not specified
+                        "nodeCidr": self._label(
+                            cluster,
+                            "fixed_subnet_cidr",
+                            lconf.fixed_subnet_cidr,
+                        ),
+                    },
+                },
+                "kubeNetwork": {
+                    "pods": {
+                        "cidrBlocks": [
+                            self._label(
+                                cluster, "pod_network_cidr", "10.100.0.0/16"
+                            )
+                        ]
+                    },
+                    "services": {
+                        "cidrBlocks": [
+                            self._label(
+                                cluster,
+                                "service_network_cidr",
+                                "172.24.0.0/13",
+                            )
+                        ]
+                    },
+                },
+                "osDistro": os_distro,
+                "controlPlane": {
+                    "machineFlavor": cluster.master_flavor_id,
+                    "machineCount": cluster.master_count,
+                    "healthCheck": {
+                        "enabled": self._get_autoheal_enabled(cluster),
+                    },
+                },
+                "nodeGroupDefaults": {
+                    "healthCheck": {
+                        "enabled": self._get_autoheal_enabled(cluster),
+                    },
+                },
+                "nodeGroups": self._process_node_groups(cluster, nodegroups),
+                "addons": {
+                    "openstack": {
+                        "csiCinder": self._storageclass_definitions(
+                            context, cluster
+                        ),
+                        "cloudConfig": {
+                            "LoadBalancer": {
+                                "lb-provider": self._get_octavia_provider(
+                                    cluster
+                                ),
+                                "lb-method": self._get_octavia_lb_algorithm(
+                                    cluster
+                                ),
+                                "create-monitor": self._get_label_bool(
+                                    cluster,
+                                    "octavia_lb_healthcheck",
+                                    lconf.octavia_lb_healthcheck,
+                                ),
+                            }
+                        },
+                    },
+                    "monitoring": {
+                        "enabled": self._get_monitoring_enabled(cluster)
+                    },
+                    "kubernetesDashboard": {
+                        "enabled": self._get_kube_dash_enabled(cluster)
+                    },
+                    # TODO(mkjpryor): can't enable ingress until code exists to
+                    #                 remove the load balancer
+                    "ingress": {"enabled": False},
+                },
             }
-            values = helm.mergeconcat(values, allowed_cidrs_config)
 
-        cni_type = self._get_cni_type(cluster)
-        if cni_type:
-            cni_config = {"addons": {"cni": {"type": cni_type}}}
-            values = helm.mergeconcat(values, cni_config)
+            # Add boot disk details, if defined in config file.
+            # Helm chart defaults to ephemeral disks, if unset.
+            boot_volume_type = self._label(
+                cluster,
+                "boot_volume_type",
+                lconf.boot_volume_type or CONF.cinder.default_boot_volume_type,
+            )
+            if boot_volume_type:
+                disk_type_details = {
+                    "controlPlane": {
+                        "machineRootVolume": {
+                            "volumeType": boot_volume_type,
+                        }
+                    },
+                    "nodeGroupDefaults": {
+                        "machineRootVolume": {
+                            "volumeType": boot_volume_type,
+                        }
+                    },
+                }
+                values = helm.mergeconcat(values, disk_type_details)
 
-        self._helm_client.install_or_upgrade(
-            driver_utils.chart_release_name(cluster),
-            CONF.capi_helm.helm_chart_name,
-            values,
-            repo=CONF.capi_helm.helm_chart_repo,
-            version=self._get_chart_version(cluster),
-            namespace=driver_utils.cluster_namespace(cluster),
-        )
+            conf_boot_size = lconf.boot_volume_size
+            boot_volume_size_gb = self._get_label_int(
+                cluster,
+                "boot_volume_size",
+                (
+                    conf_boot_size
+                    if conf_boot_size is not None
+                    else CONF.cinder.default_boot_volume_size
+                ),
+            )
+            if boot_volume_size_gb:
+                disk_size_details = {
+                    "controlPlane": {
+                        "machineRootVolume": {
+                            "diskSize": boot_volume_size_gb,
+                        }
+                    },
+                    "nodeGroupDefaults": {
+                        "machineRootVolume": {
+                            "diskSize": boot_volume_size_gb,
+                        }
+                    },
+                }
+                values = helm.mergeconcat(values, disk_size_details)
+
+            # Sometimes you need to add an extra network
+            # for things like Cinder CSI CephFS Native
+            # NOTE(mattcrees): extra_network_name is deprecated, so
+            # extra_network_names takes precedence if both are set.
+            # extra_network_name should be removed in a future release.
+            extra_network_name = self._label(
+                cluster,
+                "extra_network_name",
+                "",
+            )
+            extra_network_names = self._label(
+                cluster,
+                "extra_network_names",
+                lconf.extra_network_names,
+            )
+            if extra_network_name and not extra_network_names:
+                extra_network_names = extra_network_name
+            if extra_network_names:
+                ports = [{}]
+                for network in extra_network_names.split(" "):
+                    ports.append(
+                        {
+                            "network": {
+                                "name": network,
+                            },
+                            "securityGroups": [],
+                        }
+                    )
+                network_details = {
+                    "nodeGroupDefaults": {
+                        "machineNetworking": {
+                            "ports": ports,
+                        },
+                    },
+                }
+                values = helm.mergeconcat(values, network_details)
+
+            if self._get_k8s_keystone_auth_enabled(cluster):
+                k8s_keystone_auth_config = {
+                    "authWebhook": "k8s-keystone-auth",
+                    "addons": {
+                        "openstack": {
+                            "k8sKeystoneAuth": {
+                                # addon subchart configuration
+                                "enabled": True,
+                                "values": {
+                                    "openstackAuthUrl": context.auth_url,
+                                    "projectId": context.project_id,
+                                },
+                            }
+                        }
+                    },
+                }
+                values = helm.mergeconcat(values, k8s_keystone_auth_config)
+                LOG.debug(
+                    "Enable K8s keystone auth webhook for"
+                    f" project: {context.project_id} auth url: "
+                    f"{context.auth_url}"
+                )
+
+            api_lb_allowed_cidrs = self._get_allowed_cidrs(cluster)
+            if isinstance(api_lb_allowed_cidrs, list):
+                allowed_cidrs_config = {
+                    "apiServer": {"allowedCidrs": api_lb_allowed_cidrs}
+                }
+                values = helm.mergeconcat(values, allowed_cidrs_config)
+
+            cni_type = self._get_cni_type(cluster)
+            if cni_type:
+                cni_config = {"addons": {"cni": {"type": cni_type}}}
+                values = helm.mergeconcat(values, cni_config)
+
+            # Reset the lease's TTL clock now, right before the one step
+            # the lock actually needs to protect - everything above this
+            # point (DB/Glance/Neutron/Cinder lookups) is unbounded and
+            # must not eat into the time budget the Helm command itself
+            # is allotted.
+            lock.renew()
+
+            self._helm_client.install_or_upgrade(
+                release_name,
+                CONF.capi_helm.helm_chart_name,
+                values,
+                repo=CONF.capi_helm.helm_chart_repo,
+                version=self._get_chart_version(cluster),
+                namespace=namespace,
+            )
 
     def _generate_release_name(self, cluster):
         if cluster.stack_id:
@@ -1423,14 +1495,18 @@ class Driver(driver.Driver):
         # the first place e.g. if trust creation fails during cluster create
         # then no CAPI resources will have been created.
         if release_name:
+            namespace = driver_utils.cluster_namespace(cluster)
             # Begin the deletion of the cluster resources by uninstalling the
             # Helm release.
             # Note that this just marks the resources for deletion,
             # it does not wait for the resources to be deleted.
-            self._helm_client.uninstall_release(
-                release_name,
-                namespace=driver_utils.cluster_namespace(cluster),
-            )
+            # Hold the same lock as install/upgrade so this can't race
+            # with a concurrent Helm operation on the same release.
+            with helm.HelmLock(release_name, namespace):
+                self._helm_client.uninstall_release(
+                    release_name,
+                    namespace=namespace,
+                )
 
     def resize_cluster(
         self,
@@ -1495,12 +1571,16 @@ class Driver(driver.Driver):
         nodegroup.status = fields.ClusterStatus.DELETE_IN_PROGRESS
         nodegroup.save()
 
-        # Remove the nodegroup being deleted from the nodegroups
-        # for the Helm release
+        # Remove the nodegroup being deleted from the nodegroups for the
+        # Helm release. The exclusion is applied against the cluster's
+        # nodegroups as refreshed from the DB after the Helm lock is
+        # acquired, not this pre-lock snapshot, so it can't go stale if
+        # another nodegroup change lands while we are waiting for the
+        # lock.
         self._update_helm_release(
             context,
             cluster,
-            [ng for ng in cluster.nodegroups if ng.name != nodegroup.name],
+            exclude_nodegroup_name=nodegroup.name,
         )
 
     def rotate_credential(self, context, cluster):

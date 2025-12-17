@@ -135,6 +135,25 @@ capi_helm_opts = [
             "resource to consider as ready."
         ),
     ),
+    cfg.IntOpt(
+        "helm_lock_timeout",
+        default=300,
+        help=(
+            "Maximum time, in seconds, to wait to acquire the per-release "
+            "Helm lock before giving up, when a concurrent Helm operation "
+            "is already in progress for the same cluster."
+        ),
+    ),
+    cfg.IntOpt(
+        "helm_timeout",
+        default=300,
+        help=(
+            "Timeout, in seconds, passed to the Helm CLI for "
+            "install/upgrade/uninstall operations. The per-release Helm "
+            "lock's lease duration is derived from this value, so it "
+            "always outlives the Helm command it protects."
+        ),
+    ),
 ]
 
 capi_helm_cluster_labels_group = cfg.OptGroup(

@@ -574,3 +574,127 @@ class TestKubernetesClient(base.TestCase):
             allow_redirects=True,
         )
         self.assertEqual(items, machines)
+
+    @mock.patch.object(requests.Session, "request")
+    def test_apply_lease(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        lease_data = {"spec": {"holderIdentity": "abc"}}
+
+        client.apply_lease("lease1", lease_data, "ns1")
+
+        mock_request.assert_called_once_with(
+            "PATCH",
+            (
+                "https://test:6443/apis/coordination.k8s.io/"
+                "v1/namespaces/ns1/leases/lease1"
+            ),
+            data=None,
+            json={
+                "spec": {"holderIdentity": "abc"},
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "metadata": {"name": "lease1", "namespace": "ns1"},
+            },
+            headers={"Content-Type": "application/apply-patch+yaml"},
+            params={"fieldManager": "magnum", "force": "true"},
+        )
+
+    @mock.patch.object(requests.Session, "request")
+    def test_create_lease(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 201
+        mock_response.json.return_value = {"spec": {"holderIdentity": "abc"}}
+        mock_request.return_value = mock_response
+        lease_data = {"spec": {"holderIdentity": "abc"}}
+
+        client.create_lease("lease1", lease_data, "ns1")
+
+        # POST goes to the collection endpoint (no lease name in the
+        # path) - unlike apply()'s PATCH, this fails atomically with a
+        # 409 if a lease with this name already exists.
+        mock_request.assert_called_once_with(
+            "POST",
+            (
+                "https://test:6443/apis/coordination.k8s.io/"
+                "v1/namespaces/ns1/leases"
+            ),
+            data=None,
+            json={
+                "spec": {"holderIdentity": "abc"},
+                "apiVersion": "coordination.k8s.io/v1",
+                "kind": "Lease",
+                "metadata": {"name": "lease1", "namespace": "ns1"},
+            },
+        )
+
+    @mock.patch.object(requests.Session, "request")
+    def test_get_lease_found(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"spec": {"holderIdentity": "abc"}}
+        mock_request.return_value = mock_response
+
+        lease = client.get_lease("lease1", "ns1")
+
+        self.assert_request_called_once_with(
+            mock_request,
+            "GET",
+            (
+                "https://test:6443/apis/coordination.k8s.io/"
+                "v1/namespaces/ns1/leases/lease1"
+            ),
+            allow_redirects=True,
+        )
+        self.assertEqual({"spec": {"holderIdentity": "abc"}}, lease)
+
+    @mock.patch.object(requests.Session, "request")
+    def test_get_lease_not_found(self, mock_request):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_response.status_code = 404
+        mock_request.return_value = mock_response
+
+        self.assertIsNone(client.get_lease("lease1", "ns1"))
+
+    @mock.patch.object(requests.Session, "request")
+    def test_delete_lease(self, mock_request):
+        # Regression test: delete_lease (and Resource.delete() generally)
+        # must target the specific lease object, not the whole leases
+        # collection for the namespace - a bug that would have deleted
+        # every other cluster's lock in the same (per-project) namespace.
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_request.return_value = mock_response
+
+        client.delete_lease("lease1", "ns1")
+
+        mock_request.assert_called_once_with(
+            "DELETE",
+            (
+                "https://test:6443/apis/coordination.k8s.io/"
+                "v1/namespaces/ns1/leases/lease1"
+            ),
+        )
+        mock_response.raise_for_status.assert_called_once_with()
+
+    @mock.patch.object(requests.Session, "request")
+    def test_delete_lease_with_resource_version_precondition(
+        self, mock_request
+    ):
+        client = kubernetes.Client(TEST_KUBECONFIG)
+        mock_response = mock.MagicMock()
+        mock_request.return_value = mock_response
+
+        client.delete_lease("lease1", "ns1", resource_version="42")
+
+        mock_request.assert_called_once_with(
+            "DELETE",
+            (
+                "https://test:6443/apis/coordination.k8s.io/"
+                "v1/namespaces/ns1/leases/lease1"
+            ),
+            json={"preconditions": {"resourceVersion": "42"}},
+        )
+        mock_response.raise_for_status.assert_called_once_with()

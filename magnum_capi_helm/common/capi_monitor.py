@@ -15,6 +15,9 @@ from magnum.i18n import _
 from magnum.objects import fields as m_fields
 from magnum_capi_helm import driver_utils
 from magnum_capi_helm import kubernetes
+from oslo_log import log as logging
+
+LOG = logging.getLogger(__name__)
 
 
 MONITOR_STATE_READY = _("Ready")
@@ -81,6 +84,20 @@ class CAPIMonitor(monitors.MonitorBase):
         The class variable data is updated with current status and reason.
 
         """
+        if driver_utils.is_helm_locked(self._k8s_client, self.cluster):
+            # A Helm update for this cluster is still waiting for, or
+            # holding, the lock, so the CAPI resources may not yet
+            # reflect whatever is currently being applied. Leave
+            # self.data without a "health_status" key so magnum's
+            # periodic health sync skips updating cluster.health_status
+            # this cycle, rather than reporting on stale state.
+            LOG.debug(
+                "Helm lock currently held for %s; skipping health "
+                "status update until it is released",
+                self.cluster.uuid,
+            )
+            return
+
         # Start with a good state for everything
         status = m_fields.ClusterHealthStatus.HEALTHY
         reason = {}
