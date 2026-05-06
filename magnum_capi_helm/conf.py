@@ -131,6 +131,41 @@ capi_helm_opts = [
             "generated application credentials."
         ),
     ),
+    cfg.BoolOpt(
+        "csi_manila_enabled",
+        default=False,
+        help="Enable Manila CSI driver in clusters.",
+    ),
+    cfg.StrOpt(
+        "csi_manila_default_share_type",
+        default="",
+        help="Default share type for Manila StorageClass.",
+    ),
+    cfg.StrOpt(
+        "csi_manila_provisioner",
+        default="",
+        help=(
+            "Manila CSI provisioner override. "
+            "Auto-detected from pools if not set. "
+            "Required when multiple protocols coexist (e.g. NFS and CEPHFS)."
+        ),
+    ),
+    cfg.StrOpt(
+        "csi_manila_reclaim_policy",
+        default="Delete",
+        help="Reclaim policy for Manila volumes. Can be 'Retain' or 'Delete'.",
+    ),
+    cfg.BoolOpt(
+        "csi_manila_allow_volume_expansion",
+        default=True,
+        help="Allow users to resize Manila volumes.",
+    ),
+    cfg.StrOpt(
+        "csi_manila_volume_binding_mode",
+        default="WaitForFirstConsumer",
+        choices=["WaitForFirstConsumer", "Immediate"],
+        help="Volume binding mode for Manila StorageClasses.",
+    ),
     cfg.StrOpt(
         "api_resources",
         default={},

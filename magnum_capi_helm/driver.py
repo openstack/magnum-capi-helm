@@ -792,6 +792,32 @@ class Driver(driver.Driver):
             CONF.capi_helm.csi_cinder_allow_volume_expansion,
         )
 
+    def _get_csi_manila_enabled(self, cluster):
+        return self._get_label_bool(
+            cluster, "csi_manila_enabled", CONF.capi_helm.csi_manila_enabled
+        )
+
+    def _get_csi_manila_reclaim_policy(self, cluster):
+        return self._label(
+            cluster,
+            "csi_manila_reclaim_policy",
+            CONF.capi_helm.csi_manila_reclaim_policy,
+        )
+
+    def _get_csi_manila_allow_volume_expansion(self, cluster):
+        return self._get_label_bool(
+            cluster,
+            "csi_manila_allow_volume_expansion",
+            CONF.capi_helm.csi_manila_allow_volume_expansion,
+        )
+
+    def _get_csi_manila_volume_binding_mode(self, cluster):
+        return self._label(
+            cluster,
+            "csi_manila_volume_binding_mode",
+            CONF.capi_helm.csi_manila_volume_binding_mode,
+        )
+
     def _get_octavia_provider(self, cluster):
         return self._label(cluster, "octavia_provider", "amphora")
 
@@ -866,6 +892,117 @@ class Driver(driver.Driver):
         return dict(
             defaultStorageClass=default_storage_class,
             additionalStorageClasses=additional_storage_classes,
+        )
+
+    def _get_manila_client(self, context):
+        # NOTE(hfjqpowfjpq) magnum.common.clients.OpenStackClients does not
+        # expose a manila() method. Rather than patching clients.py,
+        # we replicate the same pattern used by cinder().
+        from manilaclient import client as manilaclient
+
+        osc = clients.OpenStackClients(context)
+        endpoint = osc.url_for(service_type="sharev2", interface="public")
+        session = osc.keystone().session
+
+        verify = getattr(session, "verify", True)
+        if isinstance(verify, str):
+            cacert = verify
+            insecure = False
+        else:
+            cacert = None
+            insecure = verify is False
+
+        return manilaclient.Client(
+            "2",
+            session=session,
+            endpoint_override=endpoint,
+            cacert=cacert,
+            insecure=insecure,
+        )
+
+    def _storageclass_definitions_manila(self, context, cluster):
+        """Query Manila API to retrieve list of available share types.
+
+        @return dict(dict,list(dict)) containing Manila storage classes
+        """
+        LOG.debug("Retrieve share types from Manila for StorageClasses.")
+        if not self._get_csi_manila_enabled(cluster):
+            return {"enabled": False}
+
+        m_client = self._get_manila_client(context)
+
+        share_types = m_client.share_types.list()
+        if not share_types:
+            raise exception.MagnumException(
+                message="No Manila share types found."
+            )
+
+        # Provisioner is derived from the storage protocol reported by Manila
+        # pools, since share types do not expose protocol directly.
+        # The chosen priority is: labels > conf > auto-detect from pools.
+        provisioner = self._label(
+            cluster,
+            "csi_manila_provisioner",
+            CONF.capi_helm.csi_manila_provisioner,
+        )
+        # NOTE(hfjqpowfjpq) In mixed-protocol environments with an explicit
+        # provisioner, all share types are exposed under that provisioner
+        # regardless of their actual backend protocol. Filtering share types
+        # by protocol should be done in these cases.
+        if not provisioner:
+            all_pools = m_client.pools.list(detailed=True)
+            protocols = {p.capabilities["storage_protocol"] for p in all_pools}
+            if len(protocols) == 1:
+                proto = next(iter(protocols)).lower()
+                provisioner = f"{proto}.manila.csi.openstack.org"
+            else:
+                # Mixed-protocol environments require explicit provisioner.
+                raise exception.MagnumException(
+                    message=(
+                        f"Multiple Manila protocols detected "
+                        f"({', '.join(sorted(protocols))}). "
+                        "Set csi_manila_provisioner label explicitly."
+                    )
+                )
+
+        share_type_names = [st.name for st in share_types]
+        default_share_type = self._label(
+            cluster,
+            "csi_manila_default_share_type",
+            CONF.capi_helm.csi_manila_default_share_type,
+        )
+        if not default_share_type:
+            default_share_type = share_type_names[0]
+        elif default_share_type not in share_type_names:
+            raise exception.MagnumException(
+                message=f"{default_share_type} is not a valid share type."
+            )
+
+        reclaim_policy = self._get_csi_manila_reclaim_policy(cluster)
+        allow_expansion = self._get_csi_manila_allow_volume_expansion(cluster)
+        binding_mode = self._get_csi_manila_volume_binding_mode(cluster)
+
+        default_sc = {}
+        additional_scs = []
+        for st in share_types:
+            sc = {
+                "name": driver_utils.sanitized_name(st.name),
+                "provisioner": provisioner,
+                "reclaimPolicy": reclaim_policy,
+                "allowVolumeExpansion": allow_expansion,
+                "volumeBindingMode": binding_mode,
+                "parameters": {"type": st.name},
+                "enabled": True,
+            }
+            if st.name == default_share_type:
+                default_sc = sc
+            else:
+                additional_scs.append(sc)
+
+        return dict(
+            enabled=True,
+            defaultStorageClass=default_sc,
+            additionalStorageClasses=additional_scs,
         )
 
     def _process_node_groups(self, cluster, nodegroups):
@@ -944,6 +1081,9 @@ class Driver(driver.Driver):
             "addons": {
                 "openstack": {
                     "csiCinder": self._storageclass_definitions(
+                        context, cluster
+                    ),
+                    "csiManila": self._storageclass_definitions_manila(
                         context, cluster
                     ),
                     "cloudConfig": {
