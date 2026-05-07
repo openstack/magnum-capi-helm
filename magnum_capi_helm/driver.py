@@ -836,6 +836,27 @@ class Driver(driver.Driver):
             return cidr_list.split(",")
         return False
 
+    def _get_pods_network_cidr(self, cluster):
+        return self._label(
+            cluster,
+            "pods_network_cidr",
+            CONF.capi_helm.pods_network_cidr,
+        )
+
+    def _get_services_network_cidr(self, cluster):
+        return self._label(
+            cluster,
+            "services_network_cidr",
+            CONF.capi_helm.services_network_cidr,
+        )
+
+    def _get_service_domain(self, cluster):
+        return self._label(
+            cluster,
+            "service_domain",
+            CONF.capi_helm.service_domain,
+        )
+
     def _storageclass_definitions(self, context, cluster):
         """Query cinder API to retrieve list of available volume types.
 
@@ -1196,6 +1217,19 @@ class Driver(driver.Driver):
                 "apiServer": {"allowedCidrs": api_lb_allowed_cidrs}
             }
             values = helm.mergeconcat(values, allowed_cidrs_config)
+
+        pods_network_cidr = driver_utils.normalize_list(self._get_pods_network_cidr(cluster))
+        services_network_cidr = driver_utils.normalize_list(self._get_services_network_cidr(cluster))
+        service_domain = self._get_service_domain(cluster)
+        kube_network = {
+            "kubeNetwork":
+                {
+                    "pods": {"cidrBlocks": pods_network_cidr},
+                    "services": {"cidBlocks": services_network_cidr},
+                    "serviceDomain": service_domain,
+                }
+        }
+        values = helm.mergeconcat(values, kube_network)
 
         self._helm_client.install_or_upgrade(
             driver_utils.chart_release_name(cluster),

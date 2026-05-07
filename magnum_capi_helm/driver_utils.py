@@ -43,3 +43,9 @@ def chart_release_name(cluster):
 
 def get_k8s_resource_name(cluster, name):
     return sanitized_name(chart_release_name(cluster), name)
+
+
+def normalize_list(val):
+    if isinstance(val, list): return val
+    clean_val = val.replace("[", "").replace("]", "")
+    return [item.strip() for item in clean_val.split(",")]
