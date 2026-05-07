@@ -168,12 +168,12 @@ capi_helm_opts = [
     ),
     cfg.StrOpt(
         "pods_network_cidr",
-        default=["172.16.0.0/13"],
+        default="172.16.0.0/13",
         help="CIDR for pod network in created clusters.",
     ),
     cfg.StrOpt(
         "services_network_cidr",
-        default=["172.24.0.0/13"],
+        default="172.24.0.0/13",
         help="CIDR for services network in created clusters.",
     ),
     cfg.StrOpt(

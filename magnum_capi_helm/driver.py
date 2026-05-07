@@ -1218,14 +1218,14 @@ class Driver(driver.Driver):
             }
             values = helm.mergeconcat(values, allowed_cidrs_config)
 
-        pods_network_cidr = driver_utils.normalize_list(self._get_pods_network_cidr(cluster))
-        services_network_cidr = driver_utils.normalize_list(self._get_services_network_cidr(cluster))
+        pods_network_cidr = self._get_pods_network_cidr(cluster)
+        services_network_cidr = self._get_services_network_cidr(cluster)
         service_domain = self._get_service_domain(cluster)
         kube_network = {
             "kubeNetwork":
                 {
-                    "pods": {"cidrBlocks": pods_network_cidr},
-                    "services": {"cidBlocks": services_network_cidr},
+                    "pods": {"cidrBlocks": [pods_network_cidr]},
+                    "services": {"cidrBlocks": [services_network_cidr]},
                     "serviceDomain": service_domain,
                 }
         }
