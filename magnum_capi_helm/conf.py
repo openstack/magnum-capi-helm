@@ -177,7 +177,7 @@ capi_helm_opts = [
         help="CIDR for services network in created clusters.",
     ),
     cfg.StrOpt(
-        "serviceDomain",
+        "service_domain",
         default="cluster.local",
         help="Domain for services in created clusters.",
     ),
