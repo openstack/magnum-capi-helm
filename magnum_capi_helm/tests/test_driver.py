@@ -986,6 +986,81 @@ class ClusterAPIDriverTest(base.DbTestCase):
 
         self.assertEqual("41", result)
 
+    def test_get_pods_network_cidr_default(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict()
+
+        result = self.driver._get_pods_network_cidr(self.cluster_obj)
+
+        self.assertEqual(CONF.capi_helm.pods_network_cidr, result)
+
+    def test_get_pods_network_cidr_from_label(self):
+        self.cluster_obj.labels = dict(pods_network_cidr="10.10.0.0/16")
+
+        result = self.driver._get_pods_network_cidr(self.cluster_obj)
+
+        self.assertEqual("10.10.0.0/16", result)
+
+    def test_get_pods_network_cidr_from_template(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict(
+            pods_network_cidr="10.20.0.0/16"
+        )
+
+        result = self.driver._get_pods_network_cidr(self.cluster_obj)
+
+        self.assertEqual("10.20.0.0/16", result)
+
+    def test_get_services_network_cidr_default(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict()
+
+        result = self.driver._get_services_network_cidr(self.cluster_obj)
+
+        self.assertEqual(CONF.capi_helm.services_network_cidr, result)
+
+    def test_get_services_network_cidr_from_label(self):
+        self.cluster_obj.labels = dict(services_network_cidr="10.30.0.0/16")
+
+        result = self.driver._get_services_network_cidr(self.cluster_obj)
+
+        self.assertEqual("10.30.0.0/16", result)
+
+    def test_get_services_network_cidr_from_template(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict(
+            services_network_cidr="10.40.0.0/16"
+        )
+
+        result = self.driver._get_services_network_cidr(self.cluster_obj)
+
+        self.assertEqual("10.40.0.0/16", result)
+
+    def test_get_service_domain_default(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict()
+
+        result = self.driver._get_service_domain(self.cluster_obj)
+
+        self.assertEqual(CONF.capi_helm.service_domain, result)
+
+    def test_get_service_domain_from_label(self):
+        self.cluster_obj.labels = dict(service_domain="custom.local")
+
+        result = self.driver._get_service_domain(self.cluster_obj)
+
+        self.assertEqual("custom.local", result)
+
+    def test_get_service_domain_from_template(self):
+        self.cluster_obj.labels = dict()
+        self.cluster_obj.cluster_template.labels = dict(
+            service_domain="template.local"
+        )
+
+        result = self.driver._get_service_domain(self.cluster_obj)
+
+        self.assertEqual("template.local", result)
+
     def test_sanitized_name_no_suffix(self):
         self.assertEqual(
             "123-456fab", driver_utils.sanitized_name("123-456Fab")
@@ -1215,6 +1290,15 @@ class ClusterAPIDriverTest(base.DbTestCase):
                 "healthCheck": {"enabled": True},
             },
             "machineSSHKeyName": None,
+            "kubeNetwork": {
+                "pods": {
+                    "cidrBlocks": [CONF.capi_helm.pods_network_cidr],
+                },
+                "services": {
+                    "cidrBlocks": [CONF.capi_helm.services_network_cidr],
+                },
+                "serviceDomain": CONF.capi_helm.service_domain,
+            },
         }
 
     @mock.patch.object(driver.Driver, "_get_allowed_cidrs")
@@ -2654,6 +2738,121 @@ class ClusterAPIDriverTest(base.DbTestCase):
         helm_install_values = mock_install.call_args[0][3]
         self.assertEqual(
             helm_install_values["apiServer"]["allowedCidrs"], cidr_list
+        )
+
+    @mock.patch.object(driver.Driver, "_get_allowed_cidrs")
+    @mock.patch.object(
+        driver.Driver, "_get_k8s_keystone_auth_enabled", return_value=False
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions_manila",
+        return_value={"enabled": False},
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_kube_network_defaults(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_manila_storageclasses,
+        mock_get_keystone_auth_enabled,
+        mock_get_allowed_cidrs,
+    ):
+        mock_image.return_value = ("imageid1", "1.27.4", "ubuntu")
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            {
+                "pods": {
+                    "cidrBlocks": [CONF.capi_helm.pods_network_cidr],
+                },
+                "services": {
+                    "cidrBlocks": [CONF.capi_helm.services_network_cidr],
+                },
+                "serviceDomain": CONF.capi_helm.service_domain,
+            },
+            helm_install_values["kubeNetwork"],
+        )
+
+    @mock.patch.object(driver.Driver, "_get_allowed_cidrs")
+    @mock.patch.object(
+        driver.Driver, "_get_k8s_keystone_auth_enabled", return_value=False
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions_manila",
+        return_value={"enabled": False},
+    )
+    @mock.patch.object(
+        driver.Driver,
+        "_storageclass_definitions",
+        return_value=mock.ANY,
+    )
+    @mock.patch.object(driver.Driver, "_validate_allowed_flavor")
+    @mock.patch.object(neutron, "get_network", autospec=True)
+    @mock.patch.object(
+        driver.Driver, "_ensure_certificate_secrets", autospec=True
+    )
+    @mock.patch.object(driver.Driver, "_create_appcred_secret", autospec=True)
+    @mock.patch.object(kubernetes.Client, "load", autospec=True)
+    @mock.patch.object(driver.Driver, "_get_image_details", autospec=True)
+    @mock.patch.object(helm.Client, "install_or_upgrade", autospec=True)
+    def test_create_cluster_kube_network_from_labels(
+        self,
+        mock_install,
+        mock_image,
+        mock_load,
+        mock_appcred,
+        mock_certs,
+        mock_get_net,
+        mock_validate_allowed_flavor,
+        mock_storageclasses,
+        mock_manila_storageclasses,
+        mock_get_keystone_auth_enabled,
+        mock_get_allowed_cidrs,
+    ):
+        self.cluster_obj.labels = dict(
+            pods_network_cidr="10.100.0.0/16",
+            services_network_cidr="10.200.0.0/16",
+            service_domain="example.local",
+        )
+        mock_image.return_value = ("imageid1", "1.27.4", "ubuntu")
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+
+        self.driver.create_cluster(self.context, self.cluster_obj, 10)
+
+        helm_install_values = mock_install.call_args[0][3]
+        self.assertEqual(
+            {
+                "pods": {"cidrBlocks": ["10.100.0.0/16"]},
+                "services": {"cidrBlocks": ["10.200.0.0/16"]},
+                "serviceDomain": "example.local",
+            },
+            helm_install_values["kubeNetwork"],
         )
 
     @mock.patch.object(driver.Driver, "_get_k8s_keystone_auth_enabled")
