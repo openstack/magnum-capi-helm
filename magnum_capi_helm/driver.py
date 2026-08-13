@@ -101,7 +101,7 @@ class Driver(driver.Driver):
         # The status of the master nodegroup is determined by the Cluster API
         # control plane object
         kcp = self._k8s_client.get_k8s_control_plane(
-            driver_utils.get_k8s_resource_name(cluster, "control-plane"),
+            driver_utils.chart_component_name(cluster, "control-plane"),
             driver_utils.cluster_namespace(cluster),
         )
 
@@ -147,7 +147,7 @@ class Driver(driver.Driver):
         # The status of a worker nodegroup is determined by the corresponding
         # Cluster API machine deployment
         md = self._k8s_client.get_machine_deployment(
-            driver_utils.get_k8s_resource_name(cluster, nodegroup.name),
+            driver_utils.chart_component_name(cluster, nodegroup.name),
             driver_utils.cluster_namespace(cluster),
         )
 
@@ -525,7 +525,7 @@ class Driver(driver.Driver):
             context, cluster
         ).items():
             self._k8s_client.apply_secret(
-                driver_utils.get_k8s_resource_name(cluster, name),
+                driver_utils.chart_component_name(cluster, name),
                 {
                     "metadata": {"labels": self._k8s_resource_labels(cluster)},
                     "type": "cluster.x-k8s.io/secret",
@@ -652,7 +652,7 @@ class Driver(driver.Driver):
         )
 
     def _get_app_cred_secret_name(self, cluster):
-        return driver_utils.get_k8s_resource_name(cluster, "cloud-credentials")
+        return driver_utils.chart_component_name(cluster, "cloud-credentials")
 
     def _get_app_cred_id(self, cluster):
         # determine the existing application credential secret

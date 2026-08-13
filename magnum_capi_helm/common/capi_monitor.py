@@ -170,7 +170,7 @@ class CAPIMonitor(monitors.MonitorBase):
         This CAPI controller manages the control plane machines
         """
         namespace = driver_utils.cluster_namespace(self.cluster)
-        resource_name = driver_utils.get_k8s_resource_name(
+        resource_name = driver_utils.chart_component_name(
             self.cluster, "control-plane"
         )
         resource_kcp = self._k8s_client.get_k8s_control_plane(
@@ -200,7 +200,7 @@ class CAPIMonitor(monitors.MonitorBase):
         for nodegroup in self.cluster.nodegroups:
             if nodegroup.role == "master":
                 continue
-            resource_name = driver_utils.get_k8s_resource_name(
+            resource_name = driver_utils.chart_component_name(
                 self.cluster, nodegroup.name
             )
             resource_md = self._k8s_client.get_machine_deployment(

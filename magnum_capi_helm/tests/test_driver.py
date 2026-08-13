@@ -324,6 +324,40 @@ class ClusterAPIDriverTest(base.DbTestCase):
 
     @mock.patch.object(driver.Driver, "_update_nodegroup_status")
     @mock.patch.object(kubernetes.Client, "load")
+    def test_update_worker_nodegroup_status_long_name_truncated(
+        self, mock_load, mock_update
+    ):
+        # capi-helm-charts truncates the "<release>-<name>" it renders as
+        # the MachineDeployment name to 63 characters (Kubernetes' own
+        # limit on resource names), via its "componentName" helper's
+        # `trunc 63 | trimSuffix "-"`. The lookup name computed here must
+        # match that truncation, or a sufficiently long-named nodegroup's
+        # MachineDeployment would never be found.
+        mock_client = mock.MagicMock(spec=kubernetes.Client)
+        mock_load.return_value = mock_client
+        nodegroup = mock.MagicMock()
+        nodegroup.name = (
+            "workers-with-a-very-long-name-that-goes-past-the-limit-"
+            "1234567890"
+        )
+        nodegroup.status = fields.ClusterStatus.CREATE_IN_PROGRESS
+        md = {"status": {}}
+        mock_client.get_machine_deployment.return_value = md
+
+        self.driver._update_worker_nodegroup_status(
+            self.cluster_obj, nodegroup
+        )
+
+        mock_client.get_machine_deployment.assert_called_once_with(
+            "cluster-example-a-111111111111-workers-with-a-very-long-name-th",
+            "magnum-fakeproject",
+        )
+        mock_update.assert_called_once_with(
+            self.cluster_obj, nodegroup, driver.NodeGroupState.PENDING
+        )
+
+    @mock.patch.object(driver.Driver, "_update_nodegroup_status")
+    @mock.patch.object(kubernetes.Client, "load")
     def test_update_worker_nodegroup_status_scaling_up(
         self, mock_load, mock_update
     ):
@@ -1125,6 +1159,30 @@ class ClusterAPIDriverTest(base.DbTestCase):
             "123-456-fab-1-asdf",
             driver_utils.sanitized_name("123-456_Fab-1", "asdf"),
         )
+
+    def test_chart_component_name_short_name_unchanged(self):
+        self.assertEqual(
+            "cluster-example-a-111111111111-workers",
+            driver_utils.chart_component_name(self.cluster_obj, "workers"),
+        )
+
+    def test_chart_component_name_long_name_truncated(self):
+        # Matches capi-helm-charts' "openstack-cluster.componentName"
+        # helper: "<release>-<name>" truncated to 63 characters with any
+        # resulting trailing "-" trimmed.
+        name = (
+            "workers-with-a-very-long-name-that-goes-past-the-limit-"
+            "1234567890"
+        )
+
+        result = driver_utils.chart_component_name(self.cluster_obj, name)
+
+        self.assertEqual(
+            "cluster-example-a-111111111111-workers-with-a-very-long-name-th",
+            result,
+        )
+        self.assertLessEqual(len(result), 63)
+        self.assertFalse(result.endswith("-"))
 
     def test_get_kube_version_raises(self):
         mock_image = mock.Mock()
