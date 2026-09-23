@@ -12,6 +12,12 @@
       - openstack/ovn-octavia-provider
     roles:
       - zuul: openstack/devstack-plugin-container
+    files:
+      - ^magnum/
+      - ^magnum_capi_helm/
+    irrelevant-files:
+      - ^magnum/tests/
+      - ^magnum_capi_helm/tests/
     vars:
       kube_version: "v1.34.7"
       kube_version_dir: "2026.04-5"
